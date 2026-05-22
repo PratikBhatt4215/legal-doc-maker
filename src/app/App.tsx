@@ -14,7 +14,7 @@ import { storage } from "../lib/storage";
 import { generatePDF } from "../lib/pdfGenerator";
 import { toast } from "sonner";
 import { Language } from "../lib/i18n";
-//hi pratik
+
 type Screen =
   | "splash"
   | "language"
@@ -26,13 +26,44 @@ type Screen =
   | "profile"
   | "admin";
 
-// Helper: save navigation state so app resumes on reopen
-const NAV_KEY = 'app_nav_state';
-function saveNavState(screen: Screen, court: string, form: string) {
-  // Don't persist transient screens
-  if (screen === 'splash' || screen === 'language' || screen === 'terms' || screen === 'login') return;
+/**
+ * ─── HOW PROFESSIONAL APP NAVIGATION WORKS ─────────────────────
+ *
+ *  FRESH LAUNCH (opened after being killed from recents):
+ *    → Show splash → then go to last known screen (or dashboard)
+ *
+ *  BACKGROUND RESUME (just minimized, not killed):
+ *    → Skip splash → restore instantly to exact screen
+ *
+ *  CLEARED FROM RECENTS / FORCE STOPPED:
+ *    → sessionStorage is wiped → treated as fresh launch
+ *    → Show splash → dashboard
+ *
+ *  LOGGED OUT:
+ *    → Clear all state → show login
+ *
+ *  KEY:
+ *    localStorage  = persists forever (user data, nav state)
+ *    sessionStorage = wiped when app is killed from recents
+ * ─────────────────────────────────────────────────────────────────
+ */
+
+const NAV_KEY = "app_nav_state";          // localStorage — last screen
+const SESSION_KEY = "app_session_alive";   // sessionStorage — alive flag
+
+function saveNavState(screen: Screen, court = "", form = "") {
+  if (["splash", "language", "terms", "login"].includes(screen)) return;
   localStorage.setItem(NAV_KEY, JSON.stringify({ screen, court, form }));
 }
+
+function loadNavState(): { screen: Screen; court: string; form: string } | null {
+  try {
+    const raw = localStorage.getItem(NAV_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
 function clearNavState() {
   localStorage.removeItem(NAV_KEY);
 }
@@ -48,45 +79,63 @@ export default function App() {
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   useEffect(() => {
-    const accepted = localStorage.getItem('termsAccepted') === 'true';
+    // ── 1. Load persisted preferences ──
+    const accepted = localStorage.getItem("termsAccepted") === "true";
     setTermsAccepted(accepted);
 
-    const savedLanguage = storage.loadLanguage();
-    if (savedLanguage) setSelectedLanguage(savedLanguage as Language);
+    const savedLang = storage.loadLanguage();
+    if (savedLang) setSelectedLanguage(savedLang as Language);
 
-    const { userId: savedUserId, userData: savedUserData } = storage.loadUserSession();
+    // ── 2. Check login session ──
+    const { userId: uid, userData: uData } = storage.loadUserSession();
 
-    if (savedUserId && savedUserData && accepted) {
-      setUserId(savedUserId);
-      setUserData(savedUserData);
+    if (uid && uData && accepted) {
+      setUserId(uid);
+      setUserData(uData);
 
-      // ── Resume exactly where user left off ──
-      const raw = localStorage.getItem(NAV_KEY);
-      if (raw) {
-        try {
-          const nav = JSON.parse(raw) as { screen: Screen; court: string; form: string };
-          setSelectedCourt(nav.court || '');
-          setSelectedForm(nav.form || '');
-          // Skip splash — go directly to saved screen
+      // ── 3. Detect background resume vs fresh launch ──
+      const isBackgroundResume = sessionStorage.getItem(SESSION_KEY) === "true";
+
+      if (isBackgroundResume) {
+        // App was just minimized (not killed) → restore instantly, NO splash
+        const nav = loadNavState();
+        if (nav) {
+          setSelectedCourt(nav.court);
+          setSelectedForm(nav.form);
           setCurrentScreen(nav.screen);
-          return; // don't show splash
-        } catch { /* corrupted, fall through */ }
+        } else {
+          setCurrentScreen("dashboard");
+        }
+        // Don't fall through to splash
+        return;
       }
-      // Logged in but no saved nav → go to dashboard after splash
+
+      // Fresh launch (or killed from recents) → mark session alive, SHOW splash
+      // handleSplashComplete will navigate to last screen after splash
     }
+
+    // Mark session as alive now — so next time (if not killed) = background resume
+    sessionStorage.setItem(SESSION_KEY, "true");
+    // Stays on "splash" — handleSplashComplete takes over
   }, []);
 
+  // ── Splash complete: navigate appropriately ──────────────────────
   const handleSplashComplete = () => {
-    // If terms not accepted, go to language selection
     if (!termsAccepted) {
       setCurrentScreen("language");
       return;
     }
-
-    // If terms accepted, check for existing session
-    const { userId: savedUserId } = storage.loadUserSession();
-    if (savedUserId) {
-      setCurrentScreen("dashboard");
+    const { userId: uid } = storage.loadUserSession();
+    if (uid) {
+      // Logged in: go to last known screen
+      const nav = loadNavState();
+      if (nav) {
+        setSelectedCourt(nav.court);
+        setSelectedForm(nav.form);
+        setCurrentScreen(nav.screen);
+      } else {
+        setCurrentScreen("dashboard");
+      }
     } else {
       setCurrentScreen("login");
     }
@@ -102,50 +151,44 @@ export default function App() {
     setCurrentScreen("login");
   };
 
-  const handleTermsBack = () => {
-    setCurrentScreen("language");
-  };
-
   const handleLogin = (uid: string, uData: any) => {
     setUserId(uid);
     setUserData(uData);
+    sessionStorage.setItem(SESSION_KEY, "true");
     setCurrentScreen("dashboard");
+    saveNavState("dashboard");
   };
 
   const handleCourtSelect = (courtId: string) => {
     setSelectedCourt(courtId);
     setCurrentScreen("court");
-    saveNavState('court', courtId, '');
+    saveNavState("court", courtId, "");
   };
 
   const handleFormSelect = (formId: string) => {
     setSelectedForm(formId);
     setCurrentScreen("editor");
-    saveNavState('editor', selectedCourt, formId);
+    saveNavState("editor", selectedCourt, formId);
   };
 
-  const handleExportPDF = () => {
-    setShowPayment(true);
+  const goToDashboard = () => {
+    setCurrentScreen("dashboard");
+    saveNavState("dashboard", "", "");
   };
+
+  const handleExportPDF = () => setShowPayment(true);
 
   const handlePaymentSuccess = async (paymentId: string) => {
     setShowPayment(false);
     toast.success("Payment successful! Generating PDF...");
-
     try {
       await generatePDF({
-        elementId: 'editor-content',
+        elementId: "printable-area",
         filename: `legal-document-${selectedForm}-${Date.now()}.pdf`,
-        onSuccess: () => {
-          toast.success("PDF downloaded successfully!");
-        },
-        onError: (error) => {
-          console.error('PDF error:', error);
-          toast.error("Failed to generate PDF. Please try again.");
-        }
+        onSuccess: () => toast.success("PDF downloaded successfully!"),
+        onError: (e) => { console.error(e); toast.error("Failed to generate PDF."); },
       });
-    } catch (error) {
-      console.error('PDF generation error:', error);
+    } catch (e) {
       toast.error("PDF generation failed.");
     }
   };
@@ -153,15 +196,10 @@ export default function App() {
   const handleLogout = () => {
     storage.clearUserSession();
     clearNavState();
+    sessionStorage.removeItem(SESSION_KEY);
     setUserId("");
     setUserData(null);
     setCurrentScreen("login");
-  };
-
-  // Save nav state whenever user goes back to dashboard
-  const goToDashboard = () => {
-    setCurrentScreen('dashboard');
-    saveNavState('dashboard', '', '');
   };
 
   return (
@@ -180,7 +218,7 @@ export default function App() {
         <TermsAndConditions
           language={selectedLanguage}
           onAccept={handleTermsAccept}
-          onBack={handleTermsBack}
+          onBack={() => setCurrentScreen("language")}
         />
       )}
 
@@ -210,7 +248,7 @@ export default function App() {
           formId={selectedForm}
           onBack={() => {
             setCurrentScreen("court");
-            saveNavState('court', selectedCourt, '');
+            saveNavState("court", selectedCourt, "");
           }}
           onExportPDF={handleExportPDF}
         />
@@ -218,7 +256,7 @@ export default function App() {
 
       {currentScreen === "profile" && (
         <Profile
-          onBack={() => setCurrentScreen("dashboard")}
+          onBack={goToDashboard}
           onLogout={handleLogout}
           onOpenAdmin={() => setCurrentScreen("admin")}
           isAdmin={true}
@@ -227,9 +265,7 @@ export default function App() {
       )}
 
       {currentScreen === "admin" && (
-        <AdminPanel
-          onBack={() => setCurrentScreen("profile")}
-        />
+        <AdminPanel onBack={() => setCurrentScreen("profile")} />
       )}
 
       {showPayment && (
@@ -237,9 +273,9 @@ export default function App() {
           onClose={() => setShowPayment(false)}
           onSuccess={handlePaymentSuccess}
           userInfo={{
-            name: userData?.displayName || 'User',
-            email: userData?.email || 'user@example.com',
-            contact: userData?.mobile || '9999999999'
+            name: userData?.displayName || "User",
+            email: userData?.email || "user@example.com",
+            contact: userData?.mobile || "9999999999",
           }}
         />
       )}
