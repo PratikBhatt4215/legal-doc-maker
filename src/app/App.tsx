@@ -26,6 +26,17 @@ type Screen =
   | "profile"
   | "admin";
 
+// Helper: save navigation state so app resumes on reopen
+const NAV_KEY = 'app_nav_state';
+function saveNavState(screen: Screen, court: string, form: string) {
+  // Don't persist transient screens
+  if (screen === 'splash' || screen === 'language' || screen === 'terms' || screen === 'login') return;
+  localStorage.setItem(NAV_KEY, JSON.stringify({ screen, court, form }));
+}
+function clearNavState() {
+  localStorage.removeItem(NAV_KEY);
+}
+
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>("splash");
   const [selectedLanguage, setSelectedLanguage] = useState<Language>("en");
@@ -37,22 +48,31 @@ export default function App() {
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   useEffect(() => {
-    // Check if terms are accepted
     const accepted = localStorage.getItem('termsAccepted') === 'true';
     setTermsAccepted(accepted);
 
-    // Load saved language
     const savedLanguage = storage.loadLanguage();
-    if (savedLanguage) {
-      setSelectedLanguage(savedLanguage as Language);
-    }
+    if (savedLanguage) setSelectedLanguage(savedLanguage as Language);
 
-    // Check for existing user session
     const { userId: savedUserId, userData: savedUserData } = storage.loadUserSession();
+
     if (savedUserId && savedUserData && accepted) {
       setUserId(savedUserId);
       setUserData(savedUserData);
-      // Will navigate to dashboard after splash
+
+      // ── Resume exactly where user left off ──
+      const raw = localStorage.getItem(NAV_KEY);
+      if (raw) {
+        try {
+          const nav = JSON.parse(raw) as { screen: Screen; court: string; form: string };
+          setSelectedCourt(nav.court || '');
+          setSelectedForm(nav.form || '');
+          // Skip splash — go directly to saved screen
+          setCurrentScreen(nav.screen);
+          return; // don't show splash
+        } catch { /* corrupted, fall through */ }
+      }
+      // Logged in but no saved nav → go to dashboard after splash
     }
   }, []);
 
@@ -95,11 +115,13 @@ export default function App() {
   const handleCourtSelect = (courtId: string) => {
     setSelectedCourt(courtId);
     setCurrentScreen("court");
+    saveNavState('court', courtId, '');
   };
 
   const handleFormSelect = (formId: string) => {
     setSelectedForm(formId);
     setCurrentScreen("editor");
+    saveNavState('editor', selectedCourt, formId);
   };
 
   const handleExportPDF = () => {
@@ -130,9 +152,16 @@ export default function App() {
 
   const handleLogout = () => {
     storage.clearUserSession();
+    clearNavState();
     setUserId("");
     setUserData(null);
     setCurrentScreen("login");
+  };
+
+  // Save nav state whenever user goes back to dashboard
+  const goToDashboard = () => {
+    setCurrentScreen('dashboard');
+    saveNavState('dashboard', '', '');
   };
 
   return (
@@ -171,7 +200,7 @@ export default function App() {
       {currentScreen === "court" && (
         <CourtModule
           courtId={selectedCourt}
-          onBack={() => setCurrentScreen("dashboard")}
+          onBack={goToDashboard}
           onSelectForm={handleFormSelect}
         />
       )}
@@ -179,7 +208,10 @@ export default function App() {
       {currentScreen === "editor" && (
         <Editor
           formId={selectedForm}
-          onBack={() => setCurrentScreen("court")}
+          onBack={() => {
+            setCurrentScreen("court");
+            saveNavState('court', selectedCourt, '');
+          }}
           onExportPDF={handleExportPDF}
         />
       )}

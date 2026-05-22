@@ -10,9 +10,10 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
   useEffect(() => {
     const timer = setTimeout(() => {
       onComplete();
-    }, 2500);
+    }, 1500); // Short — returning users skip splash entirely
     return () => clearTimeout(timer);
   }, [onComplete]);
+
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-[#1e3a5f] via-[#2a4a6f] to-[#1e3a5f] flex flex-col items-center justify-center overflow-hidden">
@@ -51,19 +52,21 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
         >
           <div className="relative inline-block">
             <img
-              src="/src/imports/ChatGPT_Image_May_9__2026__05_04_50_PM.png"
+              src="/logo.png"
               alt="Legal Docs Maker"
-              className="w-72 h-auto mx-auto drop-shadow-2xl"
+              className="w-48 h-48 mx-auto drop-shadow-2xl rounded-3xl"
+              onError={(e) => {
+                // Fallback: hide broken image, show icon
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
             />
             <motion.div
-              animate={{
-                scale: [1, 1.2, 1],
-                opacity: [0.5, 0.8, 0.5],
-              }}
+              animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
               transition={{ duration: 2, repeat: Infinity }}
               className="absolute -inset-4 bg-white/20 rounded-full blur-xl -z-10"
             />
           </div>
+
         </motion.div>
 
         <motion.div
