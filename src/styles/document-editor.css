@@ -15,6 +15,7 @@
   width: 100%;
   max-width: 794px;
   margin: 0 auto;
+  position: relative;
 
   /* Real paper shadow */
   box-shadow:
@@ -22,102 +23,123 @@
     0 8px 32px rgba(0,0,0,0.15),
     0 0 0 1px rgba(0,0,0,0.06);
 
-  /* A4 page margins matching Word default */
-  padding: 72px 96px; /* ~2.54cm top/bottom, ~3.38cm left/right */
+  /* A4 margins: extra left space for drag handles, right matches */
+  padding: 72px 96px 72px 128px;
 
-  /* For PDF capture: no border radius */
+  /* No border radius — looks like real paper */
   border-radius: 2px;
 
-  /* Minimum page height */
-  min-height: 1123px; /* A4 at 96 DPI */
+  /* Minimum A4 page height at 96 DPI */
+  min-height: 1123px;
 }
 
-/* ── The editable body inside the page ── */
-.doc-body {
+/* ── Each draggable block ── */
+.doc-block {
+  position: relative;
+  padding: 1px 0 1px 0;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+}
+
+.doc-block:hover {
+  background-color: rgba(30, 58, 95, 0.03);
+}
+
+/* ── Ghost element shown while actively dragging ── */
+.doc-drag-ghost {
+  background: white;
+  border-radius: 8px;
+  padding: 8px 16px;
+  border: 2px solid #1e3a5f;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+  cursor: grabbing;
+  font-family: 'Noto Sans Devanagari', 'Arial', serif;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #000;
+}
+
+/* ── Block content — the actual editable area ── */
+.doc-block-content {
   font-family: 'Noto Sans Devanagari', 'Arial', 'Times New Roman', serif;
   font-size: 14px;
   line-height: 1.8;
   color: #000000;
   outline: none;
-  min-height: 900px;
+  min-height: 1em;
 }
 
-/* ── Paragraph spacing ── */
-.doc-body p {
+/* ── Paragraph spacing in blocks ── */
+.doc-block-content p {
   margin: 0;
   padding: 0;
   text-align: justify;
 }
 
-.doc-body p + p {
-  margin-top: 8px;
+.doc-block-content p + p {
+  margin-top: 6px;
 }
 
-/* ── Headings ── */
-.doc-body h1,
-.doc-body h2,
-.doc-body h3,
-.doc-body .doc-heading {
+/* ── Headings in blocks ── */
+.doc-block-content h1,
+.doc-block-content h2,
+.doc-block-content h3 {
   font-weight: 700;
   text-align: center;
-  margin: 12px 0 8px;
+  margin: 8px 0 4px;
   color: #000;
 }
 
-.doc-body h1 { font-size: 16px; }
-.doc-body h2 { font-size: 15px; }
-.doc-body h3 { font-size: 14px; }
+.doc-block-content h1 { font-size: 16px; }
+.doc-block-content h2 { font-size: 15px; }
+.doc-block-content h3 { font-size: 14px; }
 
-/* ── Center-aligned text ── */
-.doc-body .doc-center,
-.doc-body [align="center"],
-.doc-body p[style*="text-align: center"],
-.doc-body p[style*="text-align:center"] {
+/* ── Center alignment in blocks ── */
+.doc-block-content [align="center"],
+.doc-block-content p[style*="text-align: center"],
+.doc-block-content p[style*="text-align:center"] {
   text-align: center !important;
 }
 
-/* ── Bold and underline ── */
-.doc-body strong, .doc-body b { font-weight: 700; }
-.doc-body em, .doc-body i { font-style: italic; }
-.doc-body u { text-decoration: underline; }
+/* ── Bold, italic, underline ── */
+.doc-block-content strong,
+.doc-block-content b { font-weight: 700; }
+.doc-block-content em,
+.doc-block-content i { font-style: italic; }
+.doc-block-content u { text-decoration: underline; }
 
-/* ── Tables (for court forms with tabular data) ── */
-.doc-body table {
+/* ── Tables ── */
+.doc-block-content table {
   width: 100%;
   border-collapse: collapse;
-  margin: 12px 0;
+  margin: 8px 0;
   font-size: 13px;
 }
 
-.doc-body td,
-.doc-body th {
+.doc-block-content td,
+.doc-block-content th {
   border: 1px solid #333;
   padding: 4px 8px;
   vertical-align: top;
 }
 
 /* ── Lists ── */
-.doc-body ol {
+.doc-block-content ol,
+.doc-block-content ul {
   padding-left: 2em;
-  margin: 8px 0;
-}
-
-.doc-body ul {
-  padding-left: 2em;
-  margin: 8px 0;
-  list-style-type: disc;
-}
-
-.doc-body li {
   margin: 4px 0;
+}
+
+.doc-block-content li {
+  margin: 2px 0;
   text-align: justify;
 }
 
 /* ── Editable placeholder fields ── */
-/* These replace [text in brackets] in the template */
+/* These replace [text in brackets] from the .docx template */
 .doc-placeholder {
   display: inline;
-  background-color: #fef9c3;    /* soft yellow highlight */
+  background-color: #fef9c3;
   border-bottom: 2px solid #f59e0b;
   border-radius: 2px;
   padding: 0 2px;
@@ -134,14 +156,8 @@
   border-bottom-color: #d97706;
 }
 
-/* When placeholder has been filled (its text differs from data-placeholder) */
-.doc-placeholder:not(:empty):not([data-placeholder=""]) {
-  color: #000;
-  font-weight: 400;
-}
-
-/* ── Blank fill lines ── */
-/* These replace _____ and ........... in the template */
+/* ── Blank underline fill fields ── */
+/* These replace _____ and ........... from the .docx template */
 .doc-blank {
   display: inline-block;
   border-bottom: 1.5px solid #000;
@@ -158,12 +174,16 @@
   border-bottom-width: 2px;
 }
 
-/* ── Print styles ── */
+/* ── Print / PDF styles ── */
 @media print {
   .doc-page {
     box-shadow: none;
     border-radius: 0;
-    padding: 0;
+    padding: 72px 96px;
+  }
+
+  .doc-drag-handle {
+    display: none !important;
   }
 
   .doc-placeholder,

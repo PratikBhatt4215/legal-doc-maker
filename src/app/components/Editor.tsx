@@ -1,9 +1,27 @@
 import { motion, AnimatePresence } from "motion/react";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   ArrowLeft, Bold, Italic, Underline, Save, Download,
-  Loader2, AlertCircle, FileText, X, Printer
+  Loader2, AlertCircle, FileText, X, Printer, GripVertical
 } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+  DragOverlay,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { storage } from "../../lib/storage";
 import { toast } from "sonner";
 import { MESSAGES } from "../../lib/messages";
@@ -14,49 +32,125 @@ import mammoth from "mammoth";
 interface EditorProps {
   formId: string;
   onBack: () => void;
-  onExportPDF: () => void; // kept for compatibility, we handle internally
+  onExportPDF: () => void;
 }
 
-// ── Placeholder patterns to replace with editable inputs ──────────
-// Replaces [text], _____, ........... with clean inline inputs
+// ── Types ──────────────────────────────────────────────────────────
+interface DocBlock {
+  id: string;
+  html: string;
+}
+
+// ── Replace placeholder patterns with editable fields ─────────────
 function injectEditableFields(html: string): string {
-  // 1. [placeholder text] → highlighted editable span
   html = html.replace(
     /\[([^\]]{1,80})\]/g,
-    `<span
-       contenteditable="true"
-       class="doc-placeholder"
-       data-placeholder="$1"
-       spellcheck="false"
-     >$1</span>`
+    `<span contenteditable="true" class="doc-placeholder" spellcheck="false">$1</span>`
   );
-
-  // 2. Long underscore sequences → clean editable underline input
   html = html.replace(
     /_{4,}/g,
-    `<span
-       contenteditable="true"
-       class="doc-blank"
-       data-placeholder="&nbsp;"
-       spellcheck="false"
-     >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>`
+    `<span contenteditable="true" class="doc-blank" spellcheck="false">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>`
   );
-
-  // 3. Long dot sequences (5+) → editable span
   html = html.replace(
     /\.{5,}/g,
-    `<span
-       contenteditable="true"
-       class="doc-blank"
-       data-placeholder="&nbsp;"
-       spellcheck="false"
-     >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>`
+    `<span contenteditable="true" class="doc-blank" spellcheck="false">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>`
   );
-
   return html;
 }
 
-// ── Paper Size Selection Modal ─────────────────────────────────────
+// ── Split HTML into draggable blocks ──────────────────────────────
+function parseIntoBlocks(html: string): DocBlock[] {
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  const children = Array.from(div.children);
+
+  if (children.length === 0) {
+    return [{ id: "block-0", html }];
+  }
+
+  return children.map((child, idx) => ({
+    id: `block-${idx}`,
+    html: child.outerHTML,
+  }));
+}
+
+// ── Serialise blocks back to HTML ─────────────────────────────────
+function serializeBlocks(blocks: DocBlock[]): string {
+  return blocks.map(b => b.html).join("\n");
+}
+
+// ── Sortable Block Component ───────────────────────────────────────
+function SortableBlock({
+  block,
+  isDragging,
+  editMode,
+}: {
+  block: DocBlock;
+  isDragging: boolean;
+  editMode: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging: isSelfDragging,
+  } = useSortable({ id: block.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isSelfDragging ? 0.3 : 1,
+  };
+
+  // Update block.html when contenteditable content changes
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.innerHTML = block.html;
+    }
+  }, [block.id]); // Only on mount
+
+  const handleInput = () => {
+    if (contentRef.current) {
+      block.html = contentRef.current.innerHTML;
+    }
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`doc-block group relative ${isDragging ? "cursor-grabbing" : ""}`}
+    >
+      {/* Drag handle — only visible in edit mode */}
+      {editMode && (
+        <div
+          {...attributes}
+          {...listeners}
+          className="doc-drag-handle absolute left-[-32px] top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-gray-200 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing touch-none"
+          title="Drag to reorder"
+        >
+          <GripVertical className="w-4 h-4 text-gray-400" />
+        </div>
+      )}
+
+      {/* Block content — contenteditable */}
+      <div
+        ref={contentRef}
+        contentEditable={!isDragging}
+        suppressContentEditableWarning
+        onInput={handleInput}
+        spellCheck={false}
+        className="doc-block-content outline-none"
+      />
+    </div>
+  );
+}
+
+// ── Paper Size Modal ───────────────────────────────────────────────
 function PaperSizeModal({
   onSelect,
   onCancel,
@@ -86,7 +180,7 @@ function PaperSizeModal({
 
         <div className="space-y-3">
           <button
-            onClick={() => onSelect('a4')}
+            onClick={() => onSelect("a4")}
             className="w-full flex items-center gap-4 p-4 border-2 border-gray-200 hover:border-[#1e3a5f] rounded-2xl transition-all group"
           >
             <div className="w-10 h-14 border-2 border-gray-300 group-hover:border-[#1e3a5f] rounded flex items-center justify-center bg-gray-50 flex-shrink-0">
@@ -99,7 +193,7 @@ function PaperSizeModal({
           </button>
 
           <button
-            onClick={() => onSelect('legal')}
+            onClick={() => onSelect("legal")}
             className="w-full flex items-center gap-4 p-4 border-2 border-gray-200 hover:border-[#9b1c31] rounded-2xl transition-all group"
           >
             <div className="w-10 h-16 border-2 border-gray-300 group-hover:border-[#9b1c31] rounded flex items-center justify-center bg-gray-50 flex-shrink-0">
@@ -120,121 +214,146 @@ function PaperSizeModal({
   );
 }
 
-// ── Main Editor Component ──────────────────────────────────────────
+// ── Main Editor ────────────────────────────────────────────────────
 export function Editor({ formId, onBack }: EditorProps) {
+  const [blocks, setBlocks] = useState<DocBlock[]>([]);
   const [loadingTemplate, setLoadingTemplate] = useState(true);
   const [templateError, setTemplateError] = useState("");
   const [showPaperModal, setShowPaperModal] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
-  const editorRef = useRef<HTMLDivElement>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(true);
+  const pageRef = useRef<HTMLDivElement>(null);
 
   const template = getTemplateById(formId);
 
-  // ── Load .docx → HTML with placeholder injection ────────────────
+  // DnD sensors — supports both mouse and touch (Android)
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 }, // require 8px movement before drag
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 5 }, // long-press to drag on mobile
+    })
+  );
+
+  // ── Load template ───────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     setLoadingTemplate(true);
     setTemplateError("");
 
-    async function loadContent() {
-      // Load saved draft first
+    async function load() {
       const savedDraft = storage.loadDraft(formId);
       if (savedDraft) {
-        if (editorRef.current && !cancelled) {
-          editorRef.current.innerHTML = savedDraft;
+        if (!cancelled) {
+          setBlocks(parseIntoBlocks(savedDraft));
+          setLoadingTemplate(false);
         }
-        setLoadingTemplate(false);
         return;
       }
 
       if (!template?.filePath) {
         if (!cancelled) {
           setTemplateError("Template file not found.");
-          if (editorRef.current) {
-            editorRef.current.innerHTML = "<p>Start typing your legal document here...</p>";
-          }
+          setBlocks([{ id: "block-0", html: "<p>Start typing here...</p>" }]);
           setLoadingTemplate(false);
         }
         return;
       }
 
       try {
-        const response = await fetch(template.filePath);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const arrayBuffer = await response.arrayBuffer();
+        const resp = await fetch(template.filePath);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const buf = await resp.arrayBuffer();
 
-        // Convert .docx → HTML preserving alignment, bold, underline
-        const result = await mammoth.convertToHtml(
-          { arrayBuffer },
-          {
-            styleMap: [
-              "p[style-name='Heading 1'] => h2.doc-heading:fresh",
-              "p[style-name='Heading 2'] => h3.doc-heading:fresh",
-              "p[style-name='center'] => p.doc-center:fresh",
-              "r[style-name='Strong'] => strong",
-            ],
-          }
-        );
+        const result = await mammoth.convertToHtml({ arrayBuffer: buf });
+        const processed = injectEditableFields(result.value);
 
-        // Post-process: replace placeholders with editable fields
-        const processedHtml = injectEditableFields(result.value);
-
-        if (editorRef.current && !cancelled) {
-          editorRef.current.innerHTML = processedHtml || "<p>Start editing...</p>";
+        if (!cancelled) {
+          setBlocks(parseIntoBlocks(processed));
         }
       } catch (err: any) {
-        console.error("[Editor] Failed to load template:", err);
+        console.error("[Editor] load error:", err);
         if (!cancelled) {
           setTemplateError("Could not load template. You can still type here.");
-          if (editorRef.current) {
-            editorRef.current.innerHTML = "<p>Start typing your legal document here...</p>";
-          }
+          setBlocks([{ id: "block-0", html: "<p>Start typing here...</p>" }]);
         }
       } finally {
         if (!cancelled) setLoadingTemplate(false);
       }
     }
 
-    loadContent();
+    load();
     return () => { cancelled = true; };
   }, [formId, template]);
 
-  const applyFormatting = (format: string) => {
-    document.execCommand(format, false);
-    editorRef.current?.focus();
+  // ── DnD handlers ───────────────────────────────────────────────
+  const handleDragStart = ({ active }: DragStartEvent) => {
+    setActiveId(active.id as string);
   };
 
-  const handleSave = useCallback(() => {
-    if (editorRef.current) {
-      storage.saveDraft(formId, editorRef.current.innerHTML);
-      toast.success(MESSAGES.editor.draftSaved);
-    }
-  }, [formId]);
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    setActiveId(null);
+    if (!over || active.id === over.id) return;
+    setBlocks(prev => {
+      const oldIdx = prev.findIndex(b => b.id === active.id);
+      const newIdx = prev.findIndex(b => b.id === over.id);
+      return arrayMove(prev, oldIdx, newIdx);
+    });
+  };
 
+  const activeBlock = useMemo(
+    () => blocks.find(b => b.id === activeId),
+    [blocks, activeId]
+  );
+
+  // ── Format ──────────────────────────────────────────────────────
+  const applyFormatting = (cmd: string) => {
+    document.execCommand(cmd, false);
+  };
+
+  // ── Save ────────────────────────────────────────────────────────
+  const handleSave = useCallback(() => {
+    const html = serializeBlocks(blocks);
+    storage.saveDraft(formId, html);
+    toast.success(MESSAGES.editor.draftSaved);
+  }, [blocks, formId]);
+
+  // ── PDF export ──────────────────────────────────────────────────
   const handlePaperSelect = async (size: PaperSize) => {
     setShowPaperModal(false);
+    setEditMode(false); // temporarily hide drag handles for clean capture
+
+    // Save current state first
+    handleSave();
+
     setExportingPDF(true);
     toast.info(`Generating ${size.toUpperCase()} PDF...`);
 
+    // Small delay for handles to hide before capture
+    await new Promise(r => setTimeout(r, 200));
+
     try {
       await generatePDF({
-        elementId: 'doc-page',
-        filename: `${template?.name || 'legal-document'}-${Date.now()}.pdf`,
+        elementId: "doc-page",
+        filename: `${template?.name || "legal-document"}-${Date.now()}.pdf`,
         paperSize: size,
         onSuccess: () => toast.success("PDF downloaded successfully!"),
         onError: () => toast.error("Failed to generate PDF. Please try again."),
       });
     } finally {
       setExportingPDF(false);
+      setEditMode(true);
     }
   };
 
   return (
     <div className="min-h-screen bg-[#e8ecf0] flex flex-col">
 
-      {/* ── Top Toolbar ── */}
+      {/* ── Toolbar ── */}
       <div className="bg-[#1e3a5f] text-white shadow-lg sticky top-0 z-20">
-        <div className="px-4 py-3 flex items-center gap-3">
+        <div className="px-4 py-3 flex items-center gap-2">
           <button
             onClick={onBack}
             className="flex items-center gap-2 hover:bg-white/10 px-3 py-2 rounded-lg transition-colors"
@@ -243,36 +362,38 @@ export function Editor({ formId, onBack }: EditorProps) {
             <span className="hidden sm:inline text-sm font-medium">Back</span>
           </button>
 
-          {/* Template name */}
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm truncate">{template?.name || "Document"}</p>
             <p className="text-xs text-blue-200">{template?.description}</p>
           </div>
 
-          {/* Formatting buttons */}
-          <div className="flex items-center gap-1 border-r border-white/20 pr-3">
-            <button
-              onClick={() => applyFormatting("bold")}
-              title="Bold"
-              className="p-2 hover:bg-white/10 rounded-lg transition-colors font-bold text-sm"
-            >B</button>
-            <button
-              onClick={() => applyFormatting("italic")}
-              title="Italic"
-              className="p-2 hover:bg-white/10 rounded-lg transition-colors italic text-sm"
-            >I</button>
-            <button
-              onClick={() => applyFormatting("underline")}
-              title="Underline"
-              className="p-2 hover:bg-white/10 rounded-lg transition-colors underline text-sm"
-            >U</button>
+          {/* Format buttons */}
+          <div className="flex items-center gap-1 border-r border-white/20 pr-2">
+            <button onClick={() => applyFormatting("bold")} title="Bold"
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors font-bold text-sm w-8 h-8 flex items-center justify-center">B</button>
+            <button onClick={() => applyFormatting("italic")} title="Italic"
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors italic text-sm w-8 h-8 flex items-center justify-center">I</button>
+            <button onClick={() => applyFormatting("underline")} title="Underline"
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors underline text-sm w-8 h-8 flex items-center justify-center">U</button>
           </div>
 
-          {/* Save */}
+          {/* Drag mode toggle */}
           <button
-            onClick={handleSave}
-            className="flex items-center gap-2 hover:bg-white/10 px-3 py-2 rounded-lg transition-colors text-sm"
+            onClick={() => setEditMode(prev => !prev)}
+            title={editMode ? "Drag mode ON — long press block to drag" : "Drag mode OFF"}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors text-sm border ${
+              editMode
+                ? "bg-white/20 border-white/30"
+                : "border-white/10 hover:bg-white/10"
+            }`}
           >
+            <GripVertical className="w-4 h-4" />
+            <span className="hidden sm:inline">{editMode ? "Drag ON" : "Drag OFF"}</span>
+          </button>
+
+          {/* Save */}
+          <button onClick={handleSave}
+            className="flex items-center gap-2 hover:bg-white/10 px-3 py-2 rounded-lg transition-colors text-sm">
             <Save className="w-4 h-4" />
             <span className="hidden sm:inline">Save</span>
           </button>
@@ -285,20 +406,26 @@ export function Editor({ formId, onBack }: EditorProps) {
           >
             {exportingPDF
               ? <Loader2 className="w-4 h-4 animate-spin" />
-              : <Download className="w-4 h-4" />
-            }
+              : <Download className="w-4 h-4" />}
             <span className="hidden sm:inline">
               {exportingPDF ? "Generating..." : "Export PDF"}
             </span>
           </button>
         </div>
+
+        {/* Hint bar when drag is enabled */}
+        {editMode && !loadingTemplate && (
+          <div className="px-4 pb-2 text-xs text-blue-200 flex items-center gap-2">
+            <GripVertical className="w-3 h-3" />
+            Long-press any paragraph to drag and reorder • Tap text to edit
+          </div>
+        )}
       </div>
 
-      {/* ── Document Page Area ── */}
+      {/* ── Document Area ── */}
       <div className="flex-1 overflow-auto py-8 px-4">
         <div className="flex justify-center">
 
-          {/* Loading state */}
           {loadingTemplate && (
             <div className="flex flex-col items-center gap-3 text-gray-500 py-24">
               <Loader2 className="w-10 h-10 animate-spin text-[#1e3a5f]" />
@@ -306,15 +433,8 @@ export function Editor({ formId, onBack }: EditorProps) {
             </div>
           )}
 
-          {/* The Document Page */}
           {!loadingTemplate && (
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="w-full"
-              style={{ maxWidth: '794px' }} /* A4 width at 96 DPI */
-            >
-              {/* Error banner */}
+            <div className="w-full" style={{ maxWidth: "794px" }}>
               {templateError && (
                 <div className="mb-4 flex items-center gap-2 p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-700 text-sm">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -322,33 +442,49 @@ export function Editor({ formId, onBack }: EditorProps) {
                 </div>
               )}
 
-              {/*
-                This is the actual "page" that gets captured for PDF.
-                Styled to look exactly like an A4 legal document.
-              */}
-              <div
-                id="doc-page"
-                className="doc-page"
-              >
-                <div
-                  id="editor-content"
-                  ref={editorRef}
-                  contentEditable
-                  suppressContentEditableWarning
-                  spellCheck={false}
-                  className="doc-body"
-                />
+              {/* The document page */}
+              <div id="doc-page" ref={pageRef} className="doc-page">
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={blocks.map(b => b.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {blocks.map(block => (
+                      <SortableBlock
+                        key={block.id}
+                        block={block}
+                        isDragging={activeId !== null}
+                        editMode={editMode}
+                      />
+                    ))}
+                  </SortableContext>
+
+                  {/* Drag overlay — ghost while dragging */}
+                  <DragOverlay>
+                    {activeBlock && (
+                      <div
+                        className="doc-block doc-drag-ghost opacity-90 shadow-2xl"
+                        dangerouslySetInnerHTML={{ __html: activeBlock.html }}
+                      />
+                    )}
+                  </DragOverlay>
+                </DndContext>
               </div>
 
               <p className="text-center text-xs text-gray-400 mt-4">
-                Tap any highlighted field to edit • Bold/Italic/Underline via toolbar
+                💡 Long-press any block to drag • Tap yellow fields to fill
               </p>
-            </motion.div>
+            </div>
           )}
         </div>
       </div>
 
-      {/* ── Paper Size Modal ── */}
+      {/* Paper Size Modal */}
       <AnimatePresence>
         {showPaperModal && (
           <PaperSizeModal
