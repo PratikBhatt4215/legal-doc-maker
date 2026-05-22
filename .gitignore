@@ -10,8 +10,8 @@ android/app/src/main/assets/public/
 android/app/build/
 android/app/src/main/assets/capacitor.config.json
 
-# Local env files
-.env
+# Local env files — remove the next line to share .env with trusted collaborators
+# .env
 .env.local
 .env.*.local
 

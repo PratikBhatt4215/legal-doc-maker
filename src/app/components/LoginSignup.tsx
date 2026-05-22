@@ -1,19 +1,20 @@
 import { motion } from "motion/react";
 import logo from "../../imports/logo.png";
-import { useState, useEffect } from "react";
-import { Mail, Lock, User, Phone, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
+import { useState } from "react";
+import { Mail, Lock, User, Phone, Eye, EyeOff, Loader2 } from "lucide-react";
 import {
-createUserWithEmailAndPassword,
-signInWithEmailAndPassword,
-sendPasswordResetEmail,
-updateProfile
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
-import { auth, db, isFirebaseConfigured } from '../../lib/firebase';
+import { auth, db } from '../../lib/firebase';
 import { storage } from '../../lib/storage';
+import { MESSAGES, getAuthErrorMessage } from '../../lib/messages';
 
 interface LoginSignupProps {
-onLogin: (userId: string, userData: any) => void;
+  onLogin: (userId: string, userData: any) => void;
 }
 
 export function LoginSignup({ onLogin }: LoginSignupProps) {
@@ -35,9 +36,10 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
 
     try {
       if (isLogin) {
+        // Login with Firebase
         const userCredential = await signInWithEmailAndPassword(
           auth,
-          formData.email,
+          formData.email.trim(),
           formData.password
         );
 
@@ -49,31 +51,40 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
 
         storage.saveUserSession(userCredential.user.uid, userData);
         onLogin(userCredential.user.uid, userData);
+
       } else {
+        // Sign Up with Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(
           auth,
-          formData.email,
+          formData.email.trim(),
           formData.password
         );
 
+        // Set display name in Firebase Auth
         await updateProfile(userCredential.user, {
           displayName: formData.fullName
         });
 
+        // Save user profile in Firestore (optional — does not block login if Firestore rules fail)
         if (db) {
-          await setDoc(doc(db, 'users', userCredential.user.uid), {
-            fullName: formData.fullName,
-            email: formData.email,
-            mobile: formData.mobile,
-            createdAt: new Date().toISOString(),
-            isAdmin: false,
-            documentsCreated: 0,
-            totalSpent: 0
-          });
+          try {
+            await setDoc(doc(db, 'users', userCredential.user.uid), {
+              fullName: formData.fullName,
+              email: formData.email.trim(),
+              mobile: formData.mobile,
+              createdAt: new Date().toISOString(),
+              isAdmin: false,
+              documentsCreated: 0,
+              totalSpent: 0
+            });
+          } catch (firestoreError: any) {
+            // Firestore write failed (e.g. security rules) — log it but still let user in
+            console.warn('Firestore profile save failed (non-critical):', firestoreError.code, firestoreError.message);
+          }
         }
 
         const userData = {
-          email: formData.email,
+          email: formData.email.trim(),
           displayName: formData.fullName,
           uid: userCredential.user.uid,
           mobile: formData.mobile
@@ -83,33 +94,19 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
         onLogin(userCredential.user.uid, userData);
       }
     } catch (error: any) {
-      console.error('Auth error:', error);
-      let errorMessage = "An error occurred. Please try again.";
-
-      if (error.code === 'auth/email-already-in-use') {
-        errorMessage = "Email already in use. Please login instead.";
-      } else if (error.code === 'auth/weak-password') {
-        errorMessage = "Password should be at least 6 characters.";
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = "Invalid email address.";
-      } else if (error.code === 'auth/user-not-found') {
-        errorMessage = "No account found. Please sign up.";
-      } else if (error.code === 'auth/wrong-password') {
-        errorMessage = "Incorrect password.";
-      } else {
-        errorMessage = error.code + " : " + error.message;
-        alert(errorMessage);
-      }
-
-      setError(errorMessage);
+      console.error('Firebase Auth error:', error.code, error.message);
+      const friendlyMsg = getAuthErrorMessage(error.code);
+      // Show code alongside message so we can diagnose unknown errors
+      const debugCode = error.code ? ` [${error.code}]` : '';
+      setError(friendlyMsg + debugCode);
     } finally {
       setLoading(false);
     }
   };
 
   const handleForgotPassword = async () => {
-    if (!formData.email) {
-      setError("Please enter your email address");
+    if (!formData.email.trim()) {
+      setError(MESSAGES.auth.emailRequired);
       return;
     }
 
@@ -117,18 +114,22 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
     setError("");
 
     try {
-      await sendPasswordResetEmail(auth, formData.email);
-      alert("Password reset email sent! Check your inbox.");
+      await sendPasswordResetEmail(auth, formData.email.trim());
+      alert(MESSAGES.auth.passwordResetSent);
     } catch (error: any) {
-      if (error.code === 'auth/user-not-found') {
-        setError("No account found with this email.");
-      } else {
-        setError("Failed to send reset email. Please try again.");
-      }
+      console.error('Password reset error:', error.code, error.message);
+      setError(getAuthErrorMessage(error.code));
     } finally {
       setLoading(false);
     }
   };
+
+  const switchMode = () => {
+    setIsLogin(!isLogin);
+    setError("");
+  };
+
+  const M = MESSAGES.loginScreen;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex flex-col items-center justify-center px-4 py-8">
@@ -139,7 +140,7 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
       >
         <img
           src={logo}
-          alt="Legal Docs Maker"
+          alt={M.logoAlt}
           className="w-80 max-w-full h-auto mx-auto mb-2 object-contain drop-shadow-lg"
         />
       </motion.div>
@@ -149,65 +150,70 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md"
       >
+        {/* Login / Sign Up Toggle */}
         <div className="flex mb-8 bg-gray-100 rounded-full p-1">
           <button
-            onClick={() => setIsLogin(true)}
-            className={`flex-1 py-2 px-4 rounded-full transition-all ${
-              isLogin ? "bg-[#1e3a5f] text-white" : "text-gray-600"
+            onClick={() => { setIsLogin(true); setError(""); }}
+            className={`flex-1 py-2 px-4 rounded-full transition-all font-medium ${
+              isLogin ? "bg-[#1e3a5f] text-white shadow" : "text-gray-600 hover:text-gray-800"
             }`}
           >
-            Login
+            {M.tabLogin}
           </button>
           <button
-            onClick={() => setIsLogin(false)}
-            className={`flex-1 py-2 px-4 rounded-full transition-all ${
-              !isLogin ? "bg-[#1e3a5f] text-white" : "text-gray-600"
+            onClick={() => { setIsLogin(false); setError(""); }}
+            className={`flex-1 py-2 px-4 rounded-full transition-all font-medium ${
+              !isLogin ? "bg-[#1e3a5f] text-white shadow" : "text-gray-600 hover:text-gray-800"
             }`}
           >
-            Sign Up
+            {M.tabSignUp}
           </button>
         </div>
 
+        {/* Error Banner */}
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm font-medium">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Full Name — Sign Up only */}
           {!isLogin && (
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Full Name"
+                placeholder={M.placeholderName}
                 value={formData.fullName}
                 onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                 className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#1e3a5f] focus:outline-none transition-colors"
-                required={!isLogin}
+                required
               />
             </div>
           )}
 
+          {/* Mobile — Sign Up only */}
           {!isLogin && (
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="tel"
-                placeholder="Mobile Number"
+                placeholder={M.placeholderMobile}
                 value={formData.mobile}
                 onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
                 className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#1e3a5f] focus:outline-none transition-colors"
-                required={!isLogin}
+                required
               />
             </div>
           )}
 
+          {/* Email */}
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="email"
-              placeholder="Email Address"
+              placeholder={M.placeholderEmail}
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#1e3a5f] focus:outline-none transition-colors"
@@ -215,37 +221,42 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
             />
           </div>
 
+          {/* Password */}
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type={showPassword ? "text" : "password"}
-              placeholder="Password"
+              placeholder={M.placeholderPass}
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               className="w-full pl-12 pr-12 py-3 border-2 border-gray-200 rounded-xl focus:border-[#1e3a5f] focus:outline-none transition-colors"
               required
+              minLength={6}
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
             >
               {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
             </button>
           </div>
 
+          {/* Forgot Password */}
           {isLogin && (
             <div className="text-right">
               <button
                 type="button"
                 onClick={handleForgotPassword}
-                className="text-sm text-[#9b1c31] hover:underline"
+                disabled={loading}
+                className="text-sm text-[#9b1c31] hover:underline disabled:opacity-50"
               >
-                Forgot Password?
+                {M.forgotPassword}
               </button>
             </div>
           )}
 
+          {/* Submit */}
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
@@ -254,21 +265,20 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
             className="w-full bg-[#1e3a5f] text-white py-3 rounded-xl font-semibold shadow-lg hover:bg-[#2a4a6f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {loading && <Loader2 className="w-5 h-5 animate-spin" />}
-            {loading ? "Please wait..." : isLogin ? "Login" : "Create Account"}
+            {loading ? M.btnLoading : isLogin ? M.btnLogin : M.btnSignUp}
           </motion.button>
         </form>
 
-        {isLogin && (
-          <p className="text-center text-sm text-gray-600 mt-6">
-            Don't have an account?{" "}
-            <button
-              onClick={() => setIsLogin(false)}
-              className="text-[#9b1c31] font-semibold hover:underline"
-            >
-              Sign Up
-            </button>
-          </p>
-        )}
+        {/* Switch Mode */}
+        <p className="text-center text-sm text-gray-600 mt-6">
+          {isLogin ? M.noAccount : M.haveAccount}{" "}
+          <button
+            onClick={switchMode}
+            className="text-[#9b1c31] font-semibold hover:underline"
+          >
+            {isLogin ? M.switchToSignUp : M.switchToLogin}
+          </button>
+        </p>
       </motion.div>
     </div>
   );

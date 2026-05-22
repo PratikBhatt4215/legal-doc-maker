@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { ArrowLeft, Bold, Italic, Underline, Save, Download } from "lucide-react";
 import { storage } from "../../lib/storage";
 import { toast } from "sonner";
+import { MESSAGES } from "../../lib/messages";
 
 interface EditorProps {
   formId: string;
@@ -34,7 +35,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
     if (editorEl) {
       const content = editorEl.innerHTML;
       storage.saveDraft(formId, content);
-      toast.success("Draft saved successfully!");
+      toast.success(MESSAGES.editor.draftSaved);
     }
   };
 
@@ -48,7 +49,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               className="flex items-center gap-2 text-[#1e3a5f] hover:bg-gray-100 px-4 py-2 rounded-lg transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
-              <span className="hidden sm:inline">Back</span>
+              <span className="hidden sm:inline">{MESSAGES.editor.back}</span>
             </button>
 
             <div className="flex items-center gap-2">
@@ -60,7 +61,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
                     : "bg-gray-100 text-gray-600"
                 }`}
               >
-                English
+                {MESSAGES.editor.langEnglish}
               </button>
               <button
                 onClick={() => setLanguage("hindi")}
@@ -70,7 +71,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
                     : "bg-gray-100 text-gray-600"
                 }`}
               >
-                हिंदी
+                {MESSAGES.editor.langHindi}
               </button>
             </div>
           </div>
@@ -109,7 +110,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg transition-colors"
             >
               <Save className="w-5 h-5" />
-              <span className="hidden sm:inline">Save Draft</span>
+              <span className="hidden sm:inline">{MESSAGES.editor.saveDraft}</span>
             </button>
 
             <button
@@ -117,7 +118,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               className="flex items-center gap-2 bg-[#9b1c31] hover:bg-[#7d1627] text-white px-4 py-2 rounded-lg transition-colors"
             >
               <Download className="w-5 h-5" />
-              <span className="hidden sm:inline">Export PDF</span>
+              <span className="hidden sm:inline">{MESSAGES.editor.exportPDF}</span>
             </button>
           </div>
         </div>
@@ -139,25 +140,25 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
                 fontFamily: language === "hindi" ? "Noto Sans Devanagari, sans-serif" : "inherit"
               }}
             >
-              <p className="text-gray-400">Start typing your legal document here...</p>
+              <p className="text-gray-400">{MESSAGES.editor.editorPlaceholder}</p>
             </div>
 
             <div className="mt-12 pt-8 border-t border-gray-200">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Advocate Signature
+                    {MESSAGES.editor.signatureLabel}
                   </label>
                   <div className="border-2 border-dashed border-gray-300 rounded-lg h-24 flex items-center justify-center text-gray-400">
-                    Click to add signature
+                    {MESSAGES.editor.signaturePrompt}
                   </div>
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Stamp
+                    {MESSAGES.editor.stampLabel}
                   </label>
                   <div className="border-2 border-dashed border-gray-300 rounded-lg h-24 flex items-center justify-center text-gray-400">
-                    Click to add stamp
+                    {MESSAGES.editor.stampPrompt}
                   </div>
                 </div>
               </div>

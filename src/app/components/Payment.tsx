@@ -3,6 +3,7 @@ import { CreditCard, Smartphone, X, Loader2 } from "lucide-react";
 import { openRazorpayCheckout } from "../../lib/razorpay";
 import { useState } from "react";
 import { toast } from "sonner";
+import { MESSAGES } from "../../lib/messages";
 
 interface PaymentProps {
   onClose: () => void;
@@ -24,22 +25,22 @@ export function Payment({ onClose, onSuccess, userInfo }: PaymentProps) {
       await openRazorpayCheckout({
         amount: 99,
         currency: 'INR',
-        name: 'Legal Docs Maker',
-        description: `Document Export Fee - ${method}`,
+        name: MESSAGES.payment.appName,
+        description: `${MESSAGES.payment.description} - ${method}`,
         onSuccess: (paymentId) => {
-          toast.success("Payment successful!");
+          toast.success(MESSAGES.payment.successToast);
           onSuccess(paymentId);
         },
         onFailure: (error) => {
           console.error('Payment failed:', error);
-          toast.error("Payment cancelled or failed");
+          toast.error(MESSAGES.payment.failedToast);
           setLoading(false);
         },
         userInfo
       });
     } catch (error) {
       console.error('Payment error:', error);
-      toast.error("Payment system error");
+      toast.error(MESSAGES.payment.errorToast);
       setLoading(false);
     }
   };
@@ -58,8 +59,8 @@ export function Payment({ onClose, onSuccess, userInfo }: PaymentProps) {
           <X className="w-6 h-6 text-gray-600" />
         </button>
 
-        <h2 className="text-2xl font-bold text-[#1e3a5f] mb-2">Complete Payment</h2>
-        <p className="text-gray-600 mb-8">Choose your payment method</p>
+        <h2 className="text-2xl font-bold text-[#1e3a5f] mb-2">{MESSAGES.payment.title}</h2>
+        <p className="text-gray-600 mb-8">{MESSAGES.payment.subtitle}</p>
 
         <div className="space-y-4">
           <motion.button
@@ -70,7 +71,7 @@ export function Payment({ onClose, onSuccess, userInfo }: PaymentProps) {
             className="w-full bg-white border-2 border-[#1e3a5f] text-[#1e3a5f] py-4 px-6 rounded-xl font-semibold flex items-center justify-center gap-3 hover:bg-[#1e3a5f] hover:text-white transition-colors disabled:opacity-50"
           >
             {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Smartphone className="w-6 h-6" />}
-            Pay with UPI
+            {MESSAGES.payment.btnUPI}
           </motion.button>
 
           <motion.button
@@ -80,8 +81,8 @@ export function Payment({ onClose, onSuccess, userInfo }: PaymentProps) {
             disabled={loading}
             className="w-full bg-white border-2 border-gray-300 text-gray-700 py-4 px-6 rounded-xl font-semibold flex items-center justify-center gap-3 hover:border-[#1e3a5f] hover:text-[#1e3a5f] transition-colors disabled:opacity-50"
           >
-            {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <img src="https://www.gstatic.com/instantbuy/svg/dark_gpay.svg" alt="Google Pay" className="h-6" />}
-            Google Pay
+            {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <img src="https://www.gstatic.com/instantbuy/svg/dark_gpay.svg" alt={MESSAGES.payment.googlePayAlt} className="h-6" />}
+            {MESSAGES.payment.btnGooglePay}
           </motion.button>
 
           <motion.button
@@ -92,7 +93,7 @@ export function Payment({ onClose, onSuccess, userInfo }: PaymentProps) {
             className="w-full bg-[#5f259f] text-white py-4 px-6 rounded-xl font-semibold flex items-center justify-center gap-3 hover:bg-[#4a1d7d] transition-colors disabled:opacity-50"
           >
             {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Smartphone className="w-6 h-6" />}
-            PhonePe
+            {MESSAGES.payment.btnPhonePe}
           </motion.button>
 
           <motion.button
@@ -103,14 +104,14 @@ export function Payment({ onClose, onSuccess, userInfo }: PaymentProps) {
             className="w-full bg-[#9b1c31] text-white py-4 px-6 rounded-xl font-semibold flex items-center justify-center gap-3 hover:bg-[#7d1627] transition-colors disabled:opacity-50"
           >
             {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <CreditCard className="w-6 h-6" />}
-            Credit/Debit Card
+            {MESSAGES.payment.btnCard}
           </motion.button>
         </div>
 
         <div className="mt-8 p-4 bg-gray-50 rounded-xl">
           <div className="flex justify-between items-center">
-            <span className="text-gray-600">Document Export Fee</span>
-            <span className="text-2xl font-bold text-[#1e3a5f]">₹99</span>
+            <span className="text-gray-600">{MESSAGES.payment.feeLabel}</span>
+            <span className="text-2xl font-bold text-[#1e3a5f]">{MESSAGES.payment.feeAmount}</span>
           </div>
         </div>
       </motion.div>

@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { ArrowLeft, User, Mail, Phone, FileText, CreditCard, LogOut, Shield } from "lucide-react";
 import { storage } from "../../lib/storage";
+import { MESSAGES } from "../../lib/messages";
 
 interface ProfileProps {
   onBack: () => void;
@@ -12,9 +13,9 @@ interface ProfileProps {
 
 export function Profile({ onBack, onLogout, onOpenAdmin, isAdmin = false, userData }: ProfileProps) {
   const userInfo = {
-    name: userData?.displayName || "Advocate Name",
-    email: userData?.email || "advocate@example.com",
-    mobile: userData?.mobile || "+91 98765 43210",
+    name: userData?.displayName || MESSAGES.profile.defaultName,
+    email: userData?.email || MESSAGES.profile.defaultEmail,
+    mobile: userData?.mobile || MESSAGES.profile.defaultMobile,
     photo: "https://api.dicebear.com/7.x/avataaars/svg?seed=" + (userData?.uid || 'LegalUser')
   };
 
@@ -52,7 +53,7 @@ export function Profile({ onBack, onLogout, onOpenAdmin, isAdmin = false, userDa
           <div className="flex flex-col md:flex-row items-center gap-6 mb-8">
             <img
               src={userInfo.photo}
-              alt="User"
+              alt={MESSAGES.profile.userAlt}
               className="w-24 h-24 rounded-full border-4 border-[#1e3a5f]"
             />
             <div className="text-center md:text-left flex-1">
@@ -73,7 +74,7 @@ export function Profile({ onBack, onLogout, onOpenAdmin, isAdmin = false, userDa
               className="flex items-center gap-2 bg-red-50 text-red-600 hover:bg-red-100 px-6 py-3 rounded-xl transition-colors"
             >
               <LogOut className="w-5 h-5" />
-              <span>Logout</span>
+              <span>{MESSAGES.profile.logout}</span>
             </button>
           </div>
 
@@ -83,7 +84,7 @@ export function Profile({ onBack, onLogout, onOpenAdmin, isAdmin = false, userDa
               className="w-full mb-6 flex items-center justify-center gap-2 bg-[#1e3a5f] text-white py-3 rounded-xl hover:bg-[#2a4a6f] transition-colors"
             >
               <Shield className="w-5 h-5" />
-              <span>Admin Panel</span>
+              <span>{MESSAGES.profile.adminPanel}</span>
             </button>
           )}
 
@@ -91,17 +92,17 @@ export function Profile({ onBack, onLogout, onOpenAdmin, isAdmin = false, userDa
             <div className="bg-blue-50 rounded-xl p-4 text-center">
               <FileText className="w-8 h-8 text-[#1e3a5f] mx-auto mb-2" />
               <p className="text-2xl font-bold text-[#1e3a5f]">12</p>
-              <p className="text-sm text-gray-600">Documents Created</p>
+              <p className="text-sm text-gray-600">{MESSAGES.profile.documentsCreated}</p>
             </div>
             <div className="bg-green-50 rounded-xl p-4 text-center">
               <CreditCard className="w-8 h-8 text-green-600 mx-auto mb-2" />
               <p className="text-2xl font-bold text-green-600">₹1,188</p>
-              <p className="text-sm text-gray-600">Total Spent</p>
+              <p className="text-sm text-gray-600">{MESSAGES.profile.totalSpent}</p>
             </div>
             <div className="bg-purple-50 rounded-xl p-4 text-center">
               <FileText className="w-8 h-8 text-purple-600 mx-auto mb-2" />
               <p className="text-2xl font-bold text-purple-600">3</p>
-              <p className="text-sm text-gray-600">Saved Drafts</p>
+              <p className="text-sm text-gray-600">{MESSAGES.profile.savedDrafts}</p>
             </div>
           </div>
         </motion.div>
@@ -112,7 +113,7 @@ export function Profile({ onBack, onLogout, onOpenAdmin, isAdmin = false, userDa
           transition={{ delay: 0.1 }}
           className="bg-white rounded-3xl shadow-lg p-8"
         >
-          <h3 className="text-xl font-bold text-[#1e3a5f] mb-6">Payment History</h3>
+          <h3 className="text-xl font-bold text-[#1e3a5f] mb-6">{MESSAGES.profile.paymentHistory}</h3>
           <div className="space-y-4">
             {paymentHistory.map((payment) => (
               <div

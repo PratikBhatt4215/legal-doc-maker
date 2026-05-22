@@ -1,9 +1,8 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { User, Search, Mic, X, Clock, FileText } from "lucide-react";
-//import { courts, courtForms } from "../lib/legalData";
 import { courts, courtForms } from "../../lib/legalData";
-import logo from "../../imports/logo.png";
+import { MESSAGES } from "../../lib/messages";
 
 
 interface DashboardProps {
@@ -21,11 +20,7 @@ export function Dashboard({
 }: DashboardProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
-  const [recentSearches] = useState([
-    "High Court Bail",
-    "Divorce Petition",
-    "Property Sale Deed",
-  ]);
+  const [recentSearches] = useState(MESSAGES.dashboard.recentSearches);
 
   const courtTitles = useMemo(
     () => Object.fromEntries(courts.map((c) => [c.id, c.title])),
@@ -85,7 +80,7 @@ export function Dashboard({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search legal documents..."
+                placeholder={MESSAGES.dashboard.searchBarTop}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#9b1c31]/20 focus:border-[#9b1c31] transition-all text-sm font-medium"
@@ -101,7 +96,7 @@ export function Dashboard({
           >
             <User className="w-5 h-5 text-[#9b1c31]" />
             <span className="hidden sm:inline font-medium">
-              {userData?.displayName || "Profile"}
+              {userData?.displayName || MESSAGES.dashboard.profileFallback}
             </span>
           </motion.button>
         </div>
@@ -109,9 +104,9 @@ export function Dashboard({
 
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="text-[#1e3a5f] mb-6">
-          <p className="text-2xl">Welcome 👋</p>
+          <p className="text-2xl">{MESSAGES.dashboard.welcome}</p>
 
-          <h1 className="text-4xl font-bold">Legal Docs Maker</h1>
+          <h1 className="text-4xl font-bold">{MESSAGES.dashboard.appTitle}</h1>
         </div>
        
 
@@ -137,7 +132,7 @@ export function Dashboard({
             </div>
             <input
               type="text"
-              placeholder="Search legal drafts, courts, documents..."
+              placeholder={MESSAGES.dashboard.searchPlaceholder}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setIsFocused(true)}
@@ -180,7 +175,7 @@ export function Dashboard({
                   {searchQuery ? (
                     <>
                       <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-2">
-                        Suggestions
+                        {MESSAGES.dashboard.suggestionsLabel}
                       </h4>
                       <div className="space-y-1">
                         {allMatchingForms.length > 0 ? (
@@ -207,7 +202,7 @@ export function Dashboard({
                             ))
                         ) : (
                           <div className="px-3 py-2 text-sm text-gray-500 italic">
-                            No matching documents found
+                            {MESSAGES.dashboard.noMatchFound}
                           </div>
                         )}
                       </div>
@@ -215,7 +210,7 @@ export function Dashboard({
                   ) : (
                     <>
                       <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-2">
-                        Recent Searches
+                        {MESSAGES.dashboard.recentLabel}
                       </h4>
                       <div className="space-y-1">
                         {recentSearches.map((term, i) => (
@@ -298,9 +293,9 @@ export function Dashboard({
               <Search className="w-8 h-8 text-gray-400" />
             </div>
             <h3 className="text-xl font-bold text-[#1e3a5f]">
-              No courts found
+              {MESSAGES.dashboard.noCourtsFound}
             </h3>
-            <p className="text-gray-500">Try searching for something else</p>
+            <p className="text-gray-500">{MESSAGES.dashboard.noCourtsHint}</p>
           </motion.div>
         )}
       </div>
