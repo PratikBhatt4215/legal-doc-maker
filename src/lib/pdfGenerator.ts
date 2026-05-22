@@ -1,66 +1,64 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
+export type PaperSize = 'a4' | 'legal';
+
 export interface PDFOptions {
   elementId: string;
   filename: string;
+  paperSize: PaperSize;
   onSuccess?: () => void;
   onError?: (error: any) => void;
 }
 
+// Paper dimensions in mm
+const PAPER_SIZES: Record<PaperSize, [number, number]> = {
+  a4:    [210, 297],
+  legal: [216, 356],
+};
+
 export const generatePDF = async (options: PDFOptions) => {
   try {
     const element = document.getElementById(options.elementId);
+    if (!element) throw new Error('Editor element not found');
 
-    if (!element) {
-      throw new Error('Element not found');
-    }
+    const [pdfW, pdfH] = PAPER_SIZES[options.paperSize];
 
-    // Create canvas from HTML element
+    // Capture the element at high resolution
     const canvas = await html2canvas(element, {
       scale: 2,
       useCORS: true,
       logging: false,
-      backgroundColor: '#ffffff'
+      backgroundColor: '#ffffff',
+      windowWidth: element.scrollWidth,
+      windowHeight: element.scrollHeight,
     });
 
-    const imgData = canvas.toDataURL('image/png');
-
-    // Create PDF
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
-      format: 'a4'
+      format: [pdfW, pdfH],
     });
 
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = pdf.internal.pageSize.getHeight();
-    const imgWidth = canvas.width;
-    const imgHeight = canvas.height;
-    const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+    const imgData = canvas.toDataURL('image/png');
+    const imgWidth = pdfW;
+    const imgHeight = (canvas.height * pdfW) / canvas.width;
 
-    const imgX = (pdfWidth - imgWidth * ratio) / 2;
-    const imgY = 10;
+    let yOffset = 0;
+    let remaining = imgHeight;
 
-    pdf.addImage(
-      imgData,
-      'PNG',
-      imgX,
-      imgY,
-      imgWidth * ratio,
-      imgHeight * ratio
-    );
-
-    // Save PDF
-    pdf.save(options.filename);
-
-    if (options.onSuccess) {
-      options.onSuccess();
+    // Multi-page support: slice image across pages
+    while (remaining > 0) {
+      if (yOffset > 0) pdf.addPage([pdfW, pdfH]);
+      pdf.addImage(imgData, 'PNG', 0, -yOffset, imgWidth, imgHeight);
+      yOffset += pdfH;
+      remaining -= pdfH;
     }
+
+    pdf.save(options.filename);
+    options.onSuccess?.();
   } catch (error) {
     console.error('PDF generation error:', error);
-    if (options.onError) {
-      options.onError(error);
-    }
+    options.onError?.(error);
   }
 };

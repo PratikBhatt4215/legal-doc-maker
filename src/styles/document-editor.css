@@ -1,0 +1,174 @@
+/**
+ * document-editor.css
+ * ─────────────────────────────────────────────────────────────────
+ * Styles for the legal document editor.
+ * Makes the document look exactly like a printed A4 legal paper.
+ * ─────────────────────────────────────────────────────────────────
+ */
+
+/* ── Import Devanagari font for Hindi documents ── */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap');
+
+/* ── The physical page container ── */
+.doc-page {
+  background: #ffffff;
+  width: 100%;
+  max-width: 794px;
+  margin: 0 auto;
+
+  /* Real paper shadow */
+  box-shadow:
+    0 1px 3px rgba(0,0,0,0.12),
+    0 8px 32px rgba(0,0,0,0.15),
+    0 0 0 1px rgba(0,0,0,0.06);
+
+  /* A4 page margins matching Word default */
+  padding: 72px 96px; /* ~2.54cm top/bottom, ~3.38cm left/right */
+
+  /* For PDF capture: no border radius */
+  border-radius: 2px;
+
+  /* Minimum page height */
+  min-height: 1123px; /* A4 at 96 DPI */
+}
+
+/* ── The editable body inside the page ── */
+.doc-body {
+  font-family: 'Noto Sans Devanagari', 'Arial', 'Times New Roman', serif;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #000000;
+  outline: none;
+  min-height: 900px;
+}
+
+/* ── Paragraph spacing ── */
+.doc-body p {
+  margin: 0;
+  padding: 0;
+  text-align: justify;
+}
+
+.doc-body p + p {
+  margin-top: 8px;
+}
+
+/* ── Headings ── */
+.doc-body h1,
+.doc-body h2,
+.doc-body h3,
+.doc-body .doc-heading {
+  font-weight: 700;
+  text-align: center;
+  margin: 12px 0 8px;
+  color: #000;
+}
+
+.doc-body h1 { font-size: 16px; }
+.doc-body h2 { font-size: 15px; }
+.doc-body h3 { font-size: 14px; }
+
+/* ── Center-aligned text ── */
+.doc-body .doc-center,
+.doc-body [align="center"],
+.doc-body p[style*="text-align: center"],
+.doc-body p[style*="text-align:center"] {
+  text-align: center !important;
+}
+
+/* ── Bold and underline ── */
+.doc-body strong, .doc-body b { font-weight: 700; }
+.doc-body em, .doc-body i { font-style: italic; }
+.doc-body u { text-decoration: underline; }
+
+/* ── Tables (for court forms with tabular data) ── */
+.doc-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.doc-body td,
+.doc-body th {
+  border: 1px solid #333;
+  padding: 4px 8px;
+  vertical-align: top;
+}
+
+/* ── Lists ── */
+.doc-body ol {
+  padding-left: 2em;
+  margin: 8px 0;
+}
+
+.doc-body ul {
+  padding-left: 2em;
+  margin: 8px 0;
+  list-style-type: disc;
+}
+
+.doc-body li {
+  margin: 4px 0;
+  text-align: justify;
+}
+
+/* ── Editable placeholder fields ── */
+/* These replace [text in brackets] in the template */
+.doc-placeholder {
+  display: inline;
+  background-color: #fef9c3;    /* soft yellow highlight */
+  border-bottom: 2px solid #f59e0b;
+  border-radius: 2px;
+  padding: 0 2px;
+  color: #92400e;
+  font-weight: 500;
+  cursor: text;
+  outline: none;
+  min-width: 40px;
+  transition: background-color 0.15s;
+}
+
+.doc-placeholder:focus {
+  background-color: #fde68a;
+  border-bottom-color: #d97706;
+}
+
+/* When placeholder has been filled (its text differs from data-placeholder) */
+.doc-placeholder:not(:empty):not([data-placeholder=""]) {
+  color: #000;
+  font-weight: 400;
+}
+
+/* ── Blank fill lines ── */
+/* These replace _____ and ........... in the template */
+.doc-blank {
+  display: inline-block;
+  border-bottom: 1.5px solid #000;
+  min-width: 80px;
+  padding: 0 4px;
+  outline: none;
+  cursor: text;
+  color: #000;
+  vertical-align: bottom;
+}
+
+.doc-blank:focus {
+  border-bottom-color: #1e3a5f;
+  border-bottom-width: 2px;
+}
+
+/* ── Print styles ── */
+@media print {
+  .doc-page {
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+  }
+
+  .doc-placeholder,
+  .doc-blank {
+    background: transparent !important;
+    border-color: #000 !important;
+  }
+}
