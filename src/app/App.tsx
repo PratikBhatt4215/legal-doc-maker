@@ -14,7 +14,7 @@ import { storage } from "../lib/storage";
 import { generatePDF } from "../lib/pdfGenerator";
 import { toast } from "sonner";
 import { Language } from "../lib/i18n";
-//hi yuvraj
+//hi pratik
 type Screen =
   | "splash"
   | "language"
