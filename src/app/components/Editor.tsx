@@ -88,90 +88,74 @@ function lockDocument(container: HTMLElement) {
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   Free-drag: hold 250ms on any block → drag anywhere
-   scaleRef → current zoom level (needed for coord math)
+   Free-drag: hold 250ms → drag element using translate()
+   Using translate() means NO coordinate math — just accumulate deltas.
+   Works at any zoom level because we divide screen delta by scale.
    ───────────────────────────────────────────────────────────────── */
 function setupFreeDrag(container: HTMLElement, scaleRef: React.MutableRefObject<number>) {
-  container.style.position = "relative";
-
+  // Broader selector — no ">" so we match at any depth inside section
   const SELECTOR = [
-    ".docx-wrapper section > p",
-    ".docx-wrapper section > h1",
-    ".docx-wrapper section > h2",
-    ".docx-wrapper section > h3",
-    ".docx-wrapper section > table",
-    ".docx-wrapper section > ul",
-    ".docx-wrapper section > ol",
-    ".docx-wrapper section > div",
+    ".docx-wrapper p",
+    ".docx-wrapper h1",
+    ".docx-wrapper h2",
+    ".docx-wrapper h3",
+    ".docx-wrapper table",
   ].join(", ");
 
   const els = Array.from(container.querySelectorAll<HTMLElement>(SELECTOR));
 
   els.forEach(el => {
-    // Visible draggable box
-    el.style.outline = "1px dashed rgba(30, 58, 95, 0.18)";
-    el.style.borderRadius = "3px";
-    el.style.cursor = "grab";
-    el.style.touchAction = "none";  // prevent scroll interference while dragging
-    el.style.boxSizing = "border-box";
+    // Visible dashed box on every element
+    el.style.outline     = "1px dashed rgba(30, 58, 95, 0.18)";
+    el.style.borderRadius= "2px";
+    el.style.cursor      = "grab";
+    el.style.touchAction = "none"; // stop browser claiming this touch as scroll
 
     let timer: ReturnType<typeof setTimeout> | null = null;
-    let dragging = false;
-    let curLeft = 0;
-    let curTop  = 0;
-    let lastX   = 0;
-    let lastY   = 0;
+    let active  = false;
+    let tx = 0, ty = 0;   // accumulated translate in document-space px
+    let lastX = 0, lastY = 0;
+    let startX = 0, startY = 0;
+    let capturedId = -1;
 
     el.addEventListener("pointerdown", (e: PointerEvent) => {
       if ((e.target as HTMLElement).tagName === "INPUT") return;
-
-      lastX = e.clientX;
-      lastY = e.clientY;
+      startX = lastX = e.clientX;
+      startY = lastY = e.clientY;
 
       timer = setTimeout(() => {
-        const scale = scaleRef.current;
-
-        // Capture current visual position in unscaled (document) space
-        const cRect  = container.getBoundingClientRect(); // scaled viewport rect
-        const elRect = el.getBoundingClientRect();
-
-        // Distance from container origin in viewport space → divide by scale → doc space
-        curLeft = (elRect.left - cRect.left) / scale;
-        curTop  = (elRect.top  - cRect.top ) / scale + container.scrollTop / scale;
-
-        // Fix element in place
-        el.style.position  = "absolute";
-        el.style.left      = `${curLeft}px`;
-        el.style.top       = `${curTop}px`;
-        el.style.width     = `${elRect.width / scale}px`;
-        el.style.zIndex    = "200";
+        active = true;
+        capturedId = e.pointerId;
+        try { el.setPointerCapture(capturedId); } catch {}
+        el.style.zIndex    = "500";
+        el.style.position  = "relative"; // needed for z-index to work
         el.style.background= "rgba(255,255,255,0.97)";
-        el.style.boxShadow = "0 8px 28px rgba(30,58,95,0.22)";
+        el.style.boxShadow = "0 8px 32px rgba(30,58,95,0.25)";
         el.style.outline   = "2px solid #1e3a5f";
         el.style.cursor    = "grabbing";
-
-        dragging = true;
-        el.setPointerCapture(e.pointerId);
         if (navigator.vibrate) navigator.vibrate(25);
       }, 250);
     });
 
     el.addEventListener("pointermove", (e: PointerEvent) => {
-      // Cancel long-press if finger moves too much before 250ms
-      if (timer && !dragging) {
-        const moved = Math.abs(e.clientX - lastX) > 8 || Math.abs(e.clientY - lastY) > 8;
-        if (moved) { clearTimeout(timer); timer = null; }
+      if (timer && !active) {
+        // Cancel long-press if finger scrolled significantly
+        if (Math.abs(e.clientX - startX) > 8 || Math.abs(e.clientY - startY) > 8) {
+          clearTimeout(timer); timer = null;
+        }
         return;
       }
-      if (!dragging) return;
+      if (!active) return;
       e.preventDefault();
+      e.stopPropagation();
 
-      // Move in document space (divide screen delta by scale)
-      const scale = scaleRef.current;
-      curLeft += (e.clientX - lastX) / scale;
-      curTop  += (e.clientY - lastY) / scale;
-      el.style.left = `${curLeft}px`;
-      el.style.top  = `${curTop}px`;
+      // Delta in SCREEN space → divide by scale = document space delta
+      const s = scaleRef.current;
+      tx += (e.clientX - lastX) / s;
+      ty += (e.clientY - lastY) / s;
+
+      // Move by translate — works regardless of position/layout
+      el.style.transform = `translate(${tx}px, ${ty}px)`;
 
       lastX = e.clientX;
       lastY = e.clientY;
@@ -179,13 +163,14 @@ function setupFreeDrag(container: HTMLElement, scaleRef: React.MutableRefObject<
 
     const stop = () => {
       if (timer) { clearTimeout(timer); timer = null; }
-      if (dragging) {
+      if (active) {
+        active = false;
+        try { el.releasePointerCapture(capturedId); } catch {}
         el.style.cursor    = "grab";
         el.style.boxShadow = "none";
         el.style.background= "transparent";
         el.style.zIndex    = "auto";
         el.style.outline   = "1px dashed rgba(30, 58, 95, 0.18)";
-        dragging = false;
       }
     };
 
@@ -369,9 +354,6 @@ export function Editor({ formId, onBack }: EditorProps) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px" }}>
           <span style={{ fontSize: 11, color: "#94a3b8" }}>
             {pageCount} page{pageCount !== 1 ? "s" : ""}
-          </span>
-          <span style={{ fontSize: 10, color: "#cbd5e1" }}>
-            · Pinch to zoom · Hold 0.25s to move
           </span>
           <div style={{ flex: 1 }} />
           <button onClick={handlePreview} style={{ display: "flex", alignItems: "center", gap: 6, background: "#f8fafc", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 9, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
