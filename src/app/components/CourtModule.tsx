@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, FileText, ChevronRight, Search, X, Globe } from "lucide-react";
+import { ArrowLeft, FileText, ChevronRight, Search, X, Globe, AlertCircle } from "lucide-react";
 import { useState, useMemo } from "react";
 import { courts } from "../../lib/legalData";
 import {
@@ -15,24 +15,114 @@ interface CourtModuleProps {
   onSelectForm: (templateId: string) => void;
 }
 
+// ── "English not available" popup ─────────────────────────────────
+function EnglishComingSoonModal({ onClose }: { onClose: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ y: 80, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 80, opacity: 0 }}
+        transition={{ type: "spring", stiffness: 300, damping: 28 }}
+        onClick={e => e.stopPropagation()}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden"
+      >
+        {/* Icon strip */}
+        <div className="bg-amber-50 px-6 pt-6 pb-4 flex flex-col items-center">
+          <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center mb-3">
+            <Globe className="w-7 h-7 text-amber-500" />
+          </div>
+          <h2 className="text-lg font-bold text-gray-900 text-center">
+            English Templates Not Available
+          </h2>
+          <p className="text-sm text-gray-500 text-center mt-1">
+            These documents are currently available in Hindi only.
+          </p>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-4">
+          <div className="flex items-start gap-3 bg-blue-50 rounded-2xl p-4">
+            <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-blue-700 leading-relaxed">
+              English versions are coming soon! We will notify you when they are ready.
+              For now, please use the <strong>हिंदी</strong> templates.
+            </p>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="px-6 pb-6 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 bg-[#1e3a5f] text-white font-bold py-3 rounded-2xl text-sm hover:bg-[#16304f] transition-colors"
+          >
+            Use हिंदी Templates
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ── Language badge pill ────────────────────────────────────────────
+function LangBadge({ lang }: { lang: "hi" | "en" }) {
+  if (lang === "hi") {
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-[#1e3a5f]/10 text-[#1e3a5f] leading-none tracking-wide">
+        हिं
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700 leading-none tracking-wide">
+      EN
+    </span>
+  );
+}
+
 export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps) {
   const court = courts.find(c => c.id === courtId);
   const title = court?.title || "Court";
 
   const availableLangs = useMemo(() => getAvailableLanguages(courtId), [courtId]);
   const [language, setLanguage] = useState<Language>(
-    availableLangs.includes('hi') ? 'hi' : 'en'
+    availableLangs.includes("hi") ? "hi" : "en"
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [showEnglishModal, setShowEnglishModal] = useState(false);
 
-  // Get all templates grouped by category for selected language
+  // Check if English templates actually exist
+  const hasEnglish = availableLangs.includes("en");
+
+  // Switch language — show popup if English isn't available
+  const handleLangSwitch = (lang: Language) => {
+    if (lang === "en" && !hasEnglish) {
+      setShowEnglishModal(true);
+      return;
+    }
+    setLanguage(lang);
+  };
+
+  const handleModalClose = () => {
+    setShowEnglishModal(false);
+    setLanguage("hi"); // Switch back to Hindi
+  };
+
+  // All templates grouped by category
   const allCategories = useMemo(
     () => getTemplatesByCategory(courtId, language),
     [courtId, language]
   );
 
-  // Filter by search query across all categories
+  // Search filter
   const filteredCategories = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
     if (!query) return allCategories;
@@ -52,187 +142,205 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
 
   const categoryKeys = Object.keys(filteredCategories);
   const totalCount = Object.values(filteredCategories).reduce(
-    (acc, arr) => acc + arr.length, 0
+    (acc, arr) => acc + arr.length,
+    0
   );
 
   return (
-    <div className="min-h-screen bg-[#fafafa]">
-      {/* Header */}
-      <div className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-30 border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
+    <div className="min-h-screen bg-[#f4f6f9]">
+
+      {/* ── Header ── */}
+      <div className="bg-white shadow-sm sticky top-0 z-30 border-b border-gray-100">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
+
+          {/* Back */}
           <button
             onClick={onBack}
-            className="flex items-center gap-2 text-[#1e3a5f] bg-gray-50 hover:bg-gray-100 px-4 py-2 rounded-xl transition-all border border-gray-200 shadow-sm group whitespace-nowrap"
+            className="flex items-center gap-2 text-[#1e3a5f] hover:bg-gray-100 p-2 rounded-xl transition-all"
           >
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-            <span className="font-medium hidden sm:inline">Dashboard</span>
+            <ArrowLeft className="w-5 h-5" />
           </button>
 
           {/* Search */}
-          <div className="flex-1 max-w-md relative">
+          <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder={`Search in ${title}...`}
+              placeholder={`Search templates...`}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-10 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#9b1c31]/20 focus:border-[#9b1c31] transition-all text-sm font-medium"
+              className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#9b1c31]/20 focus:border-[#9b1c31] transition-all text-sm"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded-full transition-colors"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded-full"
               >
                 <X className="w-3 h-3 text-gray-400" />
               </button>
             )}
           </div>
 
-          {/* Language Toggle — only show if both Hindi and English exist */}
-          {availableLangs.length > 1 && (
-            <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 flex-shrink-0">
-              <Globe className="w-4 h-4 text-gray-400 ml-1" />
-              <button
-                onClick={() => setLanguage('hi')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
-                  language === 'hi'
-                    ? 'bg-[#1e3a5f] text-white shadow'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                हिंदी
-              </button>
-              <button
-                onClick={() => setLanguage('en')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
-                  language === 'en'
-                    ? 'bg-[#1e3a5f] text-white shadow'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                EN
-              </button>
-            </div>
+          {/* Language toggle — always visible */}
+          <div className="flex items-center bg-gray-100 rounded-xl p-1 flex-shrink-0">
+            <button
+              onClick={() => handleLangSwitch("hi")}
+              className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${
+                language === "hi"
+                  ? "bg-[#1e3a5f] text-white shadow"
+                  : "text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              हिं
+            </button>
+            <button
+              onClick={() => handleLangSwitch("en")}
+              className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all relative ${
+                language === "en"
+                  ? "bg-emerald-600 text-white shadow"
+                  : "text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              EN
+              {/* "coming soon" dot indicator if English not available */}
+              {!hasEnglish && (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full border border-white" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Court title + stats bar */}
+        <div className="px-4 pb-3 flex items-center gap-2">
+          <h1 className="text-base font-extrabold text-[#1e3a5f]">{title}</h1>
+          <span className="text-xs text-gray-400">•</span>
+          <span className="text-xs text-gray-500 font-medium">
+            {totalCount} templates
+          </span>
+          <span className="text-xs text-gray-400">•</span>
+          {/* Active language badge */}
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+            language === "hi"
+              ? "bg-[#1e3a5f]/10 text-[#1e3a5f]"
+              : "bg-emerald-100 text-emerald-700"
+          }`}>
+            {language === "hi" ? "हिंदी" : "English"}
+          </span>
+          {/* Coming soon label */}
+          {!hasEnglish && (
+            <span className="text-xs bg-amber-100 text-amber-600 font-semibold px-2 py-0.5 rounded-full">
+              EN coming soon
+            </span>
           )}
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Title */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <h1 className="text-3xl md:text-4xl font-extrabold text-[#1e3a5f] tracking-tight">
-            {title} <span className="text-[#9b1c31]">Documents</span>
-          </h1>
-          <p className="text-gray-500 mt-1 font-medium">
-            {totalCount} template{totalCount !== 1 ? 's' : ''} available
-            {language === 'hi' ? ' (हिंदी)' : ' (English)'}
-          </p>
-        </motion.div>
+      {/* ── Content ── */}
+      <div className="max-w-7xl mx-auto px-4 py-5 space-y-3">
 
         {/* No results */}
         {categoryKeys.length === 0 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-center py-24"
+            className="text-center py-20"
           >
-            <div className="bg-gray-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Search className="w-8 h-8 text-gray-400" />
+            <div className="bg-gray-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
+              <Search className="w-7 h-7 text-gray-400" />
             </div>
-            <h3 className="text-xl font-bold text-[#1e3a5f]">No documents found</h3>
-            <p className="text-gray-500 mt-1">
-              {searchQuery
-                ? 'Try a different search term'
-                : language === 'en'
-                ? 'English templates coming soon!'
-                : 'No templates in this court yet'}
+            <h3 className="text-lg font-bold text-[#1e3a5f]">No templates found</h3>
+            <p className="text-gray-500 mt-1 text-sm">
+              {searchQuery ? "Try a different search" : "No templates available"}
             </p>
           </motion.div>
         )}
 
-        {/* Categories */}
-        <div className="space-y-4">
-          {categoryKeys.map((category, catIdx) => {
-            const templates = filteredCategories[category];
-            const isExpanded = expandedCategory === category || searchQuery !== '';
+        {/* Category accordion */}
+        {categoryKeys.map((category, catIdx) => {
+          const templates = filteredCategories[category];
+          const isExpanded = expandedCategory === category || searchQuery !== "";
 
-            return (
-              <motion.div
-                key={category}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: catIdx * 0.04 }}
-                className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+          return (
+            <motion.div
+              key={category}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: catIdx * 0.03 }}
+              className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+            >
+              {/* Category header */}
+              <button
+                onClick={() =>
+                  setExpandedCategory(isExpanded && !searchQuery ? null : category)
+                }
+                className="w-full flex items-center justify-between px-4 py-4 hover:bg-gray-50 transition-colors"
               >
-                {/* Category Header */}
-                <button
-                  onClick={() =>
-                    setExpandedCategory(isExpanded && !searchQuery ? null : category)
-                  }
-                  className="w-full flex items-center justify-between p-5 hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-[#9b1c31]/10 flex items-center justify-center">
-                      <FileText className="w-5 h-5 text-[#9b1c31]" />
-                    </div>
-                    <div className="text-left">
-                      <h2 className="font-bold text-[#1e3a5f] text-lg leading-tight">
-                        {category}
-                      </h2>
-                      <p className="text-sm text-gray-400">
-                        {templates.length} document{templates.length !== 1 ? 's' : ''}
-                      </p>
-                    </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-[#9b1c31]/10 flex items-center justify-center flex-shrink-0">
+                    <FileText className="w-4 h-4 text-[#9b1c31]" />
                   </div>
-                  <ChevronRight
-                    className={`w-5 h-5 text-gray-400 transition-transform ${
-                      isExpanded ? 'rotate-90' : ''
-                    }`}
-                  />
-                </button>
+                  <div className="text-left">
+                    <h2 className="font-bold text-[#1e3a5f] text-sm leading-tight">
+                      {category}
+                    </h2>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {templates.length} document{templates.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight
+                  className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${
+                    isExpanded ? "rotate-90" : ""
+                  }`}
+                />
+              </button>
 
-                {/* Template List */}
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="border-t border-gray-100"
-                    >
-                      <div className="divide-y divide-gray-50">
-                        {templates.map((template, idx) => (
-                          <motion.button
-                            key={template.id}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: idx * 0.03 }}
-                            onClick={() => onSelectForm(template.id)}
-                            className="w-full flex items-center gap-4 px-5 py-4 hover:bg-[#9b1c31]/5 transition-colors text-left group"
-                          >
-                            <div className="w-8 h-8 rounded-lg bg-gray-100 group-hover:bg-[#9b1c31]/10 flex items-center justify-center flex-shrink-0 transition-colors">
-                              <FileText className="w-4 h-4 text-gray-400 group-hover:text-[#9b1c31] transition-colors" />
-                            </div>
-                            <span className="flex-1 text-[#1e3a5f] font-medium group-hover:text-[#9b1c31] transition-colors leading-snug">
-                              {template.name}
-                            </span>
-                            <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#9b1c31] flex-shrink-0 transition-colors" />
-                          </motion.button>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            );
-          })}
-        </div>
+              {/* Templates list */}
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.18 }}
+                    className="border-t border-gray-100"
+                  >
+                    <div className="divide-y divide-gray-50">
+                      {templates.map((template, idx) => (
+                        <motion.button
+                          key={template.id}
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: idx * 0.025 }}
+                          onClick={() => onSelectForm(template.id)}
+                          className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-[#9b1c31]/5 transition-colors text-left group"
+                        >
+                          {/* Language badge */}
+                          <LangBadge lang={template.language as "hi" | "en"} />
+
+                          {/* Template name */}
+                          <span className="flex-1 text-[#1e3a5f] text-sm font-medium group-hover:text-[#9b1c31] transition-colors leading-snug">
+                            {template.name}
+                          </span>
+
+                          <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#9b1c31] flex-shrink-0 transition-colors" />
+                        </motion.button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })}
       </div>
+
+      {/* ── English not available modal ── */}
+      <AnimatePresence>
+        {showEnglishModal && (
+          <EnglishComingSoonModal onClose={handleModalClose} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
