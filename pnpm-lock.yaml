@@ -134,6 +134,9 @@ importers:
       date-fns:
         specifier: 3.6.0
         version: 3.6.0
+      docx-preview:
+        specifier: ^0.3.7
+        version: 0.3.7
       embla-carousel-react:
         specifier: 8.6.0
         version: 8.6.0(react@18.3.1)
@@ -2226,6 +2229,9 @@ packages:
 
   dnd-core@16.0.1:
     resolution: {integrity: sha512-HK294sl7tbw6F6IeuK16YSBUoorvHpY8RHO+9yFfaJyCDVb6n7PRcezrOEOa2SBCqiYpemh5Jx20ZcjKdFAVng==}
+
+  docx-preview@0.3.7:
+    resolution: {integrity: sha512-Lav69CTA/IYZPJTsKH7oYeoZjyg96N0wEJMNslGJnZJ+dMUZK85Lt5ASC79yUlD48ecWjuv+rkcmFt6EVPV0Xg==}
 
   dom-helpers@5.2.1:
     resolution: {integrity: sha512-nRCa7CK3VTrM2NmGkIy4cbK7IZlgBE/PYMn55rrXefr5xXDP0LdtfPnblFDoVdcAfslJ7or6iqAUnx0CCGIWQA==}
@@ -5431,6 +5437,10 @@ snapshots:
       '@react-dnd/asap': 5.0.2
       '@react-dnd/invariant': 4.0.2
       redux: 4.2.1
+
+  docx-preview@0.3.7:
+    dependencies:
+      jszip: 3.10.1
 
   dom-helpers@5.2.1:
     dependencies:

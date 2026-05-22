@@ -1,15 +1,13 @@
-import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect, useRef, useCallback } from "react";
-import {
-  ArrowLeft, Save, Download, Loader2, AlertCircle,
-  FileText, X, Printer, Move, MousePointer
-} from "lucide-react";
+import * as docx from "docx-preview";
+import { Download, Loader2, ZoomIn, ZoomOut, Eye, FileText, X, Printer } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { storage } from "../../lib/storage";
 import { toast } from "sonner";
-import { MESSAGES } from "../../lib/messages";
+import { TopNavBar } from "./TopNavBar";
 import { getTemplateById } from "../../lib/templateRegistry";
 import { generatePDF, type PaperSize } from "../../lib/pdfGenerator";
-import mammoth from "mammoth";
+import "../../styles/legal-document.css";
 
 interface EditorProps {
   formId: string;
@@ -17,166 +15,69 @@ interface EditorProps {
   onExportPDF: () => void;
 }
 
-// ── Types ──────────────────────────────────────────────────────────
-interface DocBlock {
-  id: string;
-  html: string;
-  x: number;   // px from left of page
-  y: number;   // px from top of page
-  width: number; // px width
-}
+const A4_W = 794;
+const A4_H = 1123;
+const LEGAL_FONT = "'Nirmala UI', 'Noto Sans Devanagari', Arial, sans-serif";
 
-// ── Replace placeholder patterns ──────────────────────────────────
-function injectEditableFields(html: string): string {
-  html = html.replace(
-    /\[([^\]]{1,80})\]/g,
-    `<span contenteditable="true" class="doc-placeholder" spellcheck="false">$1</span>`
-  );
-  html = html.replace(
-    /_{4,}/g,
-    `<span contenteditable="true" class="doc-blank" spellcheck="false">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>`
-  );
-  html = html.replace(
-    /\.{5,}/g,
-    `<span contenteditable="true" class="doc-blank" spellcheck="false">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>`
-  );
-  return html;
-}
-
-// Page dimensions (A4 at 96 DPI, with margins)
-const PAGE_W = 794;
-const PAGE_PADDING_X = 72;
-const PAGE_PADDING_TOP = 72;
-const BLOCK_DEFAULT_WIDTH = PAGE_W - PAGE_PADDING_X * 2;
-
-// ── Parse HTML into positioned blocks ────────────────────────────
-function parseIntoBlocks(html: string): DocBlock[] {
-  const div = document.createElement("div");
-  div.innerHTML = html;
-  const children = Array.from(div.children);
-  if (children.length === 0) {
-    return [{
-      id: "block-0", html,
-      x: PAGE_PADDING_X, y: PAGE_PADDING_TOP,
-      width: BLOCK_DEFAULT_WIDTH,
-    }];
+/* ─────────────────────────────────────────────────────────────────
+   Walk the rendered docx and replace dot-sequences with real inputs.
+   Dotted line = empty field. Once user types → dotted line disappears.
+   ───────────────────────────────────────────────────────────────── */
+function injectAndWire(container: HTMLElement) {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  const textNodes: Text[] = [];
+  let n: Node | null;
+  while ((n = walker.nextNode())) {
+    if (/[.…]{4,}/.test((n as Text).textContent || "")) {
+      textNodes.push(n as Text);
+    }
   }
 
-  let y = PAGE_PADDING_TOP;
-  return children.map((child, idx) => {
-    // Estimate block height: roughly 1.8 * 14px per line
-    const lineCount = Math.max(1, Math.ceil((child.textContent?.length || 0) / 80));
-    const estimatedH = lineCount * 26 + 8;
-    const block: DocBlock = {
-      id: `block-${idx}`,
-      html: child.outerHTML,
-      x: PAGE_PADDING_X,
-      y,
-      width: BLOCK_DEFAULT_WIDTH,
-    };
-    y += estimatedH;
-    return block;
+  textNodes.forEach(textNode => {
+    const parent = textNode.parentNode;
+    if (!parent) return;
+    const parts = (textNode.textContent || "").split(/([.…]{4,})/g);
+    const frag = document.createDocumentFragment();
+    parts.forEach(part => {
+      if (/[.…]{4,}/.test(part)) {
+        frag.appendChild(makeInput(part.length));
+      } else if (part) {
+        frag.appendChild(document.createTextNode(part));
+      }
+    });
+    parent.replaceChild(frag, textNode);
+  });
+
+  // Wire existing inputs (re-hydrate saved drafts)
+  container.querySelectorAll<HTMLInputElement>("input[data-field]").forEach(inp => {
+    if (inp.value.trim()) inp.classList.add("has-value");
+    inp.addEventListener("input", () =>
+      inp.value.trim()
+        ? inp.classList.add("has-value")
+        : inp.classList.remove("has-value")
+    );
   });
 }
 
-// ── Free-draggable block component ───────────────────────────────
-function FreeBlock({
-  block,
-  onPositionChange,
-  canvasMode,
-}: {
-  block: DocBlock;
-  onPositionChange: (id: string, x: number, y: number) => void;
-  canvasMode: boolean;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const dragging = useRef(false);
-  const startPointer = useRef({ x: 0, y: 0 });
-  const startPos = useRef({ x: block.x, y: block.y });
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    if (!canvasMode) return;
-    e.stopPropagation();
-
-    startPointer.current = { x: e.clientX, y: e.clientY };
-    startPos.current = { x: block.x, y: block.y };
-
-    // Long press: 200ms to start drag on mobile
-    longPressTimer.current = setTimeout(() => {
-      dragging.current = true;
-      setIsDragging(true);
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    }, 200);
-  }, [canvasMode, block.x, block.y]);
-
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!dragging.current) return;
-    e.preventDefault();
-
-    const dx = e.clientX - startPointer.current.x;
-    const dy = e.clientY - startPointer.current.y;
-
-    const newX = Math.max(0, Math.min(PAGE_W - block.width, startPos.current.x + dx));
-    const newY = Math.max(0, startPos.current.y + dy);
-
-    onPositionChange(block.id, newX, newY);
-  }, [block.id, block.width, onPositionChange]);
-
-  const onPointerUp = useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-    dragging.current = false;
-    setIsDragging(false);
-  }, []);
-
-  return (
-    <div
-      ref={ref}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      style={{
-        position: "absolute",
-        left: block.x,
-        top: block.y,
-        width: block.width,
-        touchAction: canvasMode ? "none" : "auto",
-        zIndex: isDragging ? 100 : 1,
-        cursor: canvasMode
-          ? isDragging ? "grabbing" : "grab"
-          : "text",
-        boxSizing: "border-box",
-      }}
-      className={`doc-free-block ${isDragging ? "doc-free-block--dragging" : ""} ${canvasMode ? "doc-free-block--canvas" : ""}`}
-    >
-      {/* Canvas mode: drag handle badge */}
-      {canvasMode && (
-        <div className="doc-free-handle">
-          <Move className="w-3 h-3" />
-        </div>
-      )}
-
-      {/* Content */}
-      <div
-        contentEditable={!canvasMode}
-        suppressContentEditableWarning
-        spellCheck={false}
-        className="doc-block-content"
-        onInput={(e) => {
-          block.html = (e.target as HTMLElement).innerHTML;
-        }}
-        dangerouslySetInnerHTML={{ __html: block.html }}
-      />
-    </div>
+function makeInput(dotLen: number): HTMLInputElement {
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.setAttribute(
+    "data-field",
+    `f_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`
   );
+  inp.placeholder = " ";
+  inp.style.width = `calc(${dotLen * 0.45}ch + 10px)`;
+  inp.style.minWidth = "60px";
+  inp.addEventListener("input", () =>
+    inp.value.trim()
+      ? inp.classList.add("has-value")
+      : inp.classList.remove("has-value")
+  );
+  return inp;
 }
 
-// ── Paper size modal ──────────────────────────────────────────────
+/* ── Paper size modal ─────────────────────────────────────────────── */
 function PaperSizeModal({ onSelect, onCancel }: {
   onSelect: (s: PaperSize) => void;
   onCancel: () => void;
@@ -184,7 +85,7 @@ function PaperSizeModal({ onSelect, onCancel }: {
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
     >
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
@@ -206,7 +107,7 @@ function PaperSizeModal({ onSelect, onCancel }: {
             </div>
             <div className="text-left">
               <p className="font-bold text-[#1e3a5f]">A4 Size</p>
-              <p className="text-sm text-gray-500">210 × 297 mm (Standard)</p>
+              <p className="text-sm text-gray-500">210 × 297 mm — Standard</p>
             </div>
           </button>
           <button onClick={() => onSelect("legal")}
@@ -216,274 +117,291 @@ function PaperSizeModal({ onSelect, onCancel }: {
             </div>
             <div className="text-left">
               <p className="font-bold text-[#9b1c31]">Legal Size</p>
-              <p className="text-sm text-gray-500">216 × 356 mm (Legal paper)</p>
+              <p className="text-sm text-gray-500">216 × 356 mm — Legal paper</p>
             </div>
           </button>
         </div>
-        <p className="text-xs text-gray-400 text-center mt-4">Two paper sizes as per client requirement</p>
+        <p className="text-xs text-gray-400 text-center mt-4">As per client requirement</p>
       </motion.div>
     </motion.div>
   );
 }
 
-// ── Main Editor ───────────────────────────────────────────────────
+/* ── Main Editor ─────────────────────────────────────────────────── */
 export function Editor({ formId, onBack }: EditorProps) {
-  const [blocks, setBlocks] = useState<DocBlock[]>([]);
-  const [loadingTemplate, setLoadingTemplate] = useState(true);
-  const [templateError, setTemplateError] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [zoom, setZoom] = useState(1);
+  const [pageCount, setPageCount] = useState(0);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [showPaperModal, setShowPaperModal] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
-  const [canvasMode, setCanvasMode] = useState(false); // false = edit text, true = drag freely
+  const docxContainerRef = useRef<HTMLDivElement>(null);
 
   const template = getTemplateById(formId);
 
-  // ── Load template ──────────────────────────────────────────────
+  // Auto-fit A4 to phone screen width
   useEffect(() => {
-    let cancelled = false;
-    setLoadingTemplate(true);
-    setTemplateError("");
-
-    async function load() {
-      const saved = storage.loadDraft(formId);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved) as DocBlock[];
-          if (!cancelled) { setBlocks(parsed); setLoadingTemplate(false); }
-          return;
-        } catch { /* not JSON — old format, fall through */ }
-      }
-
-      if (!template?.filePath) {
-        if (!cancelled) {
-          setBlocks([{
-            id: "block-0",
-            html: "<p>Start typing here...</p>",
-            x: PAGE_PADDING_X, y: PAGE_PADDING_TOP,
-            width: BLOCK_DEFAULT_WIDTH,
-          }]);
-          setTemplateError("Template file not found.");
-          setLoadingTemplate(false);
-        }
-        return;
-      }
-
-      try {
-        const resp = await fetch(template.filePath);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const buf = await resp.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer: buf });
-        const processed = injectEditableFields(result.value);
-        if (!cancelled) setBlocks(parseIntoBlocks(processed));
-      } catch (err: any) {
-        console.error("[Editor] load error:", err);
-        if (!cancelled) {
-          setTemplateError("Could not load template. You can still type here.");
-          setBlocks([{
-            id: "block-0",
-            html: "<p>Start typing here...</p>",
-            x: PAGE_PADDING_X, y: PAGE_PADDING_TOP,
-            width: BLOCK_DEFAULT_WIDTH,
-          }]);
-        }
-      } finally {
-        if (!cancelled) setLoadingTemplate(false);
-      }
-    }
-
-    load();
-    return () => { cancelled = true; };
-  }, [formId, template]);
-
-  // ── Position update from drag ─────────────────────────────────
-  const handlePositionChange = useCallback((id: string, x: number, y: number) => {
-    setBlocks(prev =>
-      prev.map(b => b.id === id ? { ...b, x, y } : b)
-    );
+    const fit = (window.innerWidth - 16) / A4_W;
+    setZoom(parseFloat(Math.min(1, fit).toFixed(3)));
   }, []);
 
-  // ── Save ───────────────────────────────────────────────────────
+  // Load .docx → render using docx-preview (pixel-perfect)
+  useEffect(() => {
+    if (!docxContainerRef.current || !template?.filePath) {
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+
+    fetch(template.filePath)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+      })
+      .then(blob => {
+        return docx.renderAsync(blob, docxContainerRef.current!, null, {
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          ignoreFonts: false,
+          breakPages: true,
+          useBase64URL: true,
+          // Add the legal-doc class so our CSS applies
+          className: "legal-doc",
+        });
+      })
+      .then(() => {
+        if (docxContainerRef.current) {
+          // Replace dot-sequences with real input fields
+          injectAndWire(docxContainerRef.current);
+          // Count rendered pages
+          const pages = docxContainerRef.current.querySelectorAll(".docx-wrapper > section, .docx").length;
+          setPageCount(pages || 1);
+        }
+      })
+      .catch(err => {
+        console.error("[Editor] docx-preview error:", err);
+        toast.error("Could not load template.");
+        if (docxContainerRef.current) {
+          docxContainerRef.current.innerHTML =
+            `<div style="padding:40px;font-family:${LEGAL_FONT};font-size:14px;color:#111">
+              <p>Template could not be rendered. Please try again.</p>
+            </div>`;
+        }
+      })
+      .finally(() => setIsLoading(false));
+  }, [formId, template]);
+
+  // Preview — substitute inputs with styled spans (what PDF will look like)
+  const handlePreview = useCallback(() => {
+    if (!docxContainerRef.current) return;
+    const clone = docxContainerRef.current.cloneNode(true) as HTMLElement;
+
+    clone.querySelectorAll<HTMLInputElement>("input[data-field]").forEach(cloneInp => {
+      const live = docxContainerRef.current!.querySelector<HTMLInputElement>(
+        `input[data-field="${cloneInp.dataset.field}"]`
+      );
+      const val = live?.value || cloneInp.value || "";
+      const span = document.createElement("span");
+      span.textContent = val || "\u00A0";
+      span.style.cssText = `
+        display:inline-block;
+        width:${cloneInp.style.width || "auto"};
+        min-width:${cloneInp.style.minWidth || "60px"};
+        border-bottom:${val ? "2px solid transparent" : "1.5px dotted #777"};
+        padding: 0 4px;
+        font-family:${LEGAL_FONT};
+        font-size:inherit; font-weight:400; color:#111;
+        vertical-align:baseline;
+      `;
+      cloneInp.parentNode?.replaceChild(span, cloneInp);
+    });
+
+    setPreviewHtml(clone.innerHTML);
+  }, []);
+
+  // Save draft (stores the current HTML including filled input values)
   const handleSave = useCallback(() => {
-    storage.saveDraft(formId, JSON.stringify(blocks));
-    toast.success(MESSAGES.editor.draftSaved);
-  }, [blocks, formId]);
+    if (docxContainerRef.current) {
+      storage.saveDraft(formId, docxContainerRef.current.innerHTML);
+      toast.success("Draft saved!");
+    }
+  }, [formId]);
 
-  // ── Calculate canvas height from block positions ───────────────
-  const canvasHeight = Math.max(
-    1123,
-    ...blocks.map(b => b.y + 200)
-  );
-
-  // ── PDF export ─────────────────────────────────────────────────
+  // PDF export
   const handlePaperSelect = async (size: PaperSize) => {
     setShowPaperModal(false);
-    setCanvasMode(false);
     handleSave();
     setExportingPDF(true);
     toast.info(`Generating ${size.toUpperCase()} PDF...`);
     await new Promise(r => setTimeout(r, 150));
     try {
       await generatePDF({
-        elementId: "doc-page",
+        elementId: "printable-area",
         filename: `${template?.name || "legal-document"}-${Date.now()}.pdf`,
         paperSize: size,
-        onSuccess: () => toast.success("PDF downloaded successfully!"),
-        onError: () => toast.error("Failed to generate PDF. Please try again."),
+        onSuccess: () => toast.success("PDF downloaded!"),
+        onError: () => toast.error("PDF failed. Try again."),
       });
     } finally {
       setExportingPDF(false);
     }
   };
 
-  // ── Format commands ────────────────────────────────────────────
-  const fmt = (cmd: string) => document.execCommand(cmd, false);
+  const zoomIn  = () => setZoom(p => parseFloat(Math.min(2,   p + 0.1).toFixed(3)));
+  const zoomOut = () => setZoom(p => parseFloat(Math.max(0.3, p - 0.1).toFixed(3)));
 
   return (
-    <div className="min-h-screen bg-[#e8ecf0] flex flex-col">
+    <div style={{ display: "flex", flexDirection: "column", height: "100dvh", overflow: "hidden" }}>
+
+      {/* ── Nav bar ── */}
+      <TopNavBar
+        title={template?.name || "Legal Document Editor"}
+        subtitle={template?.description}
+        onBack={onBack}
+      />
 
       {/* ── Toolbar ── */}
-      <div className="bg-[#1e3a5f] text-white shadow-lg sticky top-0 z-20">
-        <div className="px-4 py-3 flex items-center gap-2 flex-wrap">
-          <button onClick={onBack}
-            className="flex items-center gap-2 hover:bg-white/10 px-3 py-2 rounded-lg transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-            <span className="hidden sm:inline text-sm font-medium">Back</span>
-          </button>
+      <div style={{
+        background: "white", borderBottom: "1px solid #e2e8f0",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.07)", flexShrink: 0,
+        width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch" as any,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", minWidth: "max-content" }}>
 
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm truncate">{template?.name || "Document"}</p>
-            <p className="text-xs text-blue-200">{template?.description}</p>
-          </div>
-
-          {/* Mode toggle */}
-          <div className="flex items-center gap-1 bg-white/10 rounded-xl p-1">
-            <button
-              onClick={() => setCanvasMode(false)}
-              title="Text edit mode"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                !canvasMode ? "bg-white text-[#1e3a5f] shadow" : "text-white/70 hover:text-white"
-              }`}
-            >
-              <MousePointer className="w-3.5 h-3.5" />
-              Edit Text
+          {/* Zoom controls */}
+          <div style={{ display: "flex", alignItems: "center", background: "#f1f5f9", borderRadius: 8, padding: "2px 4px", gap: 2 }}>
+            <button onClick={zoomOut} style={{ padding: 5, border: "none", background: "transparent", cursor: "pointer", borderRadius: 6, display: "flex" }}>
+              <ZoomOut size={14} />
             </button>
-            <button
-              onClick={() => setCanvasMode(true)}
-              title="Canvas drag mode"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                canvasMode ? "bg-white text-[#1e3a5f] shadow" : "text-white/70 hover:text-white"
-              }`}
-            >
-              <Move className="w-3.5 h-3.5" />
-              Move
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#64748b", minWidth: 34, textAlign: "center" }}>
+              {Math.round(zoom * 100)}%
+            </span>
+            <button onClick={zoomIn} style={{ padding: 5, border: "none", background: "transparent", cursor: "pointer", borderRadius: 6, display: "flex" }}>
+              <ZoomIn size={14} />
             </button>
           </div>
 
-          {/* Text format — only in edit mode */}
-          {!canvasMode && (
-            <div className="flex items-center gap-0.5 border-l border-white/20 pl-2">
-              <button onClick={() => fmt("bold")} className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-lg font-bold text-sm">B</button>
-              <button onClick={() => fmt("italic")} className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-lg italic text-sm">I</button>
-              <button onClick={() => fmt("underline")} className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-lg underline text-sm">U</button>
-            </div>
-          )}
+          <span style={{ fontSize: 11, color: "#94a3b8", userSelect: "none" }}>
+            {pageCount} page{pageCount !== 1 ? "s" : ""}
+          </span>
 
-          <button onClick={handleSave}
-            className="flex items-center gap-2 hover:bg-white/10 px-3 py-2 rounded-lg transition-colors text-sm">
-            <Save className="w-4 h-4" />
-            <span className="hidden sm:inline">Save</span>
+          <div style={{ flex: 1 }} />
+
+          {/* Preview button */}
+          <button onClick={handlePreview} style={{
+            display: "flex", alignItems: "center", gap: 6,
+            background: "#f8fafc", color: "#334155", border: "1px solid #cbd5e1",
+            borderRadius: 9, padding: "8px 14px", fontWeight: 600, fontSize: 13,
+            cursor: "pointer", whiteSpace: "nowrap",
+          }}>
+            <Eye size={15} /> Preview
           </button>
 
+          {/* Export PDF button */}
           <button
             onClick={() => setShowPaperModal(true)}
-            disabled={exportingPDF || loadingTemplate}
-            className="flex items-center gap-2 bg-[#9b1c31] hover:bg-[#7d1627] disabled:opacity-50 px-4 py-2 rounded-lg transition-colors text-sm font-semibold"
+            disabled={exportingPDF || isLoading}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              background: "#9b1c31", color: "white", border: "none",
+              borderRadius: 9, padding: "8px 16px", fontWeight: 700, fontSize: 13,
+              cursor: exportingPDF ? "not-allowed" : "pointer", whiteSpace: "nowrap",
+              boxShadow: "0 2px 8px rgba(155,28,49,0.3)", opacity: exportingPDF ? 0.7 : 1,
+            }}
           >
-            {exportingPDF ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            <span className="hidden sm:inline">{exportingPDF ? "Generating..." : "Export PDF"}</span>
+            {exportingPDF
+              ? <Loader2 size={15} className="animate-spin" />
+              : <Download size={15} />
+            }
+            {exportingPDF ? "Generating..." : "Export PDF"}
           </button>
         </div>
+      </div>
 
-        {/* Mode hint */}
-        <div className={`px-4 pb-2 text-xs flex items-center gap-2 transition-colors ${canvasMode ? "text-amber-300" : "text-blue-200"}`}>
-          {canvasMode
-            ? <><Move className="w-3 h-3" /> Long-press any block and drag it anywhere on the page — left, right, up, down</>
-            : <><MousePointer className="w-3 h-3" /> Tap any yellow field or text to edit • Switch to Move mode to reposition blocks</>
-          }
+      {/* ── Document scroll area ── */}
+      <div
+        id="printable-area"
+        style={{
+          flex: 1, overflowY: "auto", overflowX: "hidden",
+          background: "#cbd5e1", position: "relative",
+        }}
+      >
+        <div style={{
+          zoom: zoom,
+          width: A4_W,
+          margin: "0 auto",
+          padding: "24px 0 40px",
+        }}>
+          <div style={{ position: "relative", minHeight: A4_H }}>
+            {/* Loading spinner */}
+            {isLoading && (
+              <div style={{
+                position: "absolute", inset: 0, zIndex: 10,
+                background: "white", display: "flex",
+                alignItems: "center", justifyContent: "center",
+                flexDirection: "column", gap: 12,
+              }}>
+                <Loader2 className="animate-spin text-slate-400" size={32} />
+                <p style={{ color: "#94a3b8", fontSize: 13, fontWeight: 500 }}>Loading template...</p>
+              </div>
+            )}
+
+            {/* docx-preview renders here */}
+            <div
+              ref={docxContainerRef}
+              className="legal-doc-container"
+              style={{ visibility: isLoading ? "hidden" : "visible" }}
+            />
+          </div>
         </div>
       </div>
 
-      {/* ── Document Canvas ── */}
-      <div className="flex-1 overflow-auto py-8 px-4">
-        <div className="flex justify-center">
-
-          {loadingTemplate && (
-            <div className="flex flex-col items-center gap-3 text-gray-500 py-24">
-              <Loader2 className="w-10 h-10 animate-spin text-[#1e3a5f]" />
-              <p className="text-sm font-medium">Loading template...</p>
-            </div>
-          )}
-
-          {!loadingTemplate && (
-            <div className="w-full" style={{ maxWidth: `${PAGE_W}px` }}>
-              {templateError && (
-                <div className="mb-4 flex items-center gap-2 p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-700 text-sm">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  {templateError}
-                </div>
-              )}
-
-              {/*
-                THE PAGE — position:relative so blocks can be placed freely inside.
-                Width = 794px (A4). Height grows with content.
-              */}
-              <div
-                id="doc-page"
-                style={{
-                  position: "relative",
-                  width: PAGE_W,
-                  minHeight: canvasHeight,
-                  background: "#fff",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.12), 0 8px 32px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.06)",
-                  borderRadius: 2,
-                  overflow: "hidden",
-                  // Scale down on small screens
-                  transformOrigin: "top left",
-                }}
-              >
-                {/* Grid helper lines in canvas mode */}
-                {canvasMode && (
-                  <div
-                    style={{
-                      position: "absolute", inset: 0, pointerEvents: "none",
-                      backgroundImage:
-                        "linear-gradient(rgba(30,58,95,0.04) 1px, transparent 1px)," +
-                        "linear-gradient(90deg, rgba(30,58,95,0.04) 1px, transparent 1px)",
-                      backgroundSize: "40px 40px",
-                    }}
-                  />
-                )}
-
-                {/* Blocks — freely positioned */}
-                {blocks.map(block => (
-                  <FreeBlock
-                    key={block.id}
-                    block={block}
-                    onPositionChange={handlePositionChange}
-                    canvasMode={canvasMode}
-                  />
-                ))}
-              </div>
-
-              <p className="text-center text-xs text-gray-400 mt-4 pb-8">
-                {canvasMode
-                  ? "🖐 Long-press any block and drag it anywhere inside the page"
-                  : "💡 Switch to Move mode to reposition • Tap yellow fields to fill"}
+      {/* ── Preview modal ── */}
+      {previewHtml && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 1000,
+          background: "rgba(0,0,0,0.85)",
+          display: "flex", flexDirection: "column",
+        }}>
+          <div style={{
+            background: "white", padding: "16px 20px",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            borderBottom: "1px solid #e2e8f0",
+          }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#0f172a" }}>
+                Document Preview
+              </h3>
+              <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
+                This is exactly how your PDF will look
               </p>
             </div>
-          )}
+            <button
+              onClick={() => setPreviewHtml(null)}
+              style={{
+                background: "#e2e8f0", border: "none", padding: "8px 16px",
+                borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: 13,
+              }}
+            >
+              Close
+            </button>
+          </div>
+          <div style={{
+            flex: 1, overflowY: "auto", overflowX: "hidden",
+            background: "#cbd5e1",
+          }} className="legal-doc-container">
+            <div style={{
+              zoom: zoom, width: A4_W, margin: "0 auto", padding: "24px 0 40px",
+            }}>
+              <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
+      {/* ── Paper size modal ── */}
       <AnimatePresence>
         {showPaperModal && (
           <PaperSizeModal

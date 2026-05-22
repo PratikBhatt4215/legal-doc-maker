@@ -1,0 +1,163 @@
+/**
+ * legal-document.css
+ * Styles mammoth (.docx → HTML) output to match original Word legal document.
+ * Font: Nirmala UI (mandatory)
+ *
+ * CRITICAL RULE: Never set `text-align` in any .legal-doc rule.
+ * Mammoth preserves Word's paragraph alignment as inline style="text-align:..."
+ * — those inline styles must win. Any CSS text-align here would override them.
+ */
+
+
+/* ── Base ── */
+.legal-doc,
+.legal-doc-container {
+  font-family: 'Nirmala UI';
+  font-size: 11.5pt;
+  line-height: 1.85;
+  color: #111;
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: none;
+}
+
+/* ── Paragraphs ──
+   IMPORTANT: Do NOT set text-align here.
+   Added white-space: pre-wrap so that spaces and tabs from mammoth are preserved.
+   This is critical for alignment in documents that use tabs for layout. */
+.legal-doc p {
+  margin: 0 0 2px 0;
+  padding: 0;
+  word-break: break-word;
+  white-space: pre-wrap;
+  tab-size: 48px;
+}
+
+/* Alignment classes added via mammoth styleMap */
+.legal-doc p.align-center { text-align: center !important; }
+.legal-doc p.align-right { text-align: right !important; }
+.legal-doc p.align-justify { text-align: justify !important; }
+
+/* ── Headings ── */
+.legal-doc h1,
+.legal-doc h2,
+.legal-doc h3 {
+  font-weight: bold;
+  text-decoration: underline;
+  font-size: 11.5pt;
+  margin: 0.6em 0 0.3em;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  /* alignment comes from mammoth inline style */
+}
+
+/* ── Bold / underline ── */
+.legal-doc strong, .legal-doc b { font-weight: 700; }
+.legal-doc u { text-underline-offset: 3px; }
+
+/* ── Lists ── */
+.legal-doc ol, .legal-doc ul { padding-left: 1.5em; margin: 0.2em 0; }
+.legal-doc li { margin: 0.15em 0; line-height: 1.85; white-space: pre-wrap; tab-size: 48px; }
+
+/* ── Tables (mammoth uses tables for tab-stop layouts like the applicant section) ── */
+.legal-doc table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.2em 0;
+  table-layout: auto;         /* allow columns to size naturally from content */
+}
+.legal-doc td, .legal-doc th {
+  padding: 1px 4px;
+  vertical-align: baseline;
+  border: none;
+  font-size: 11.5pt;
+  line-height: 1.85;
+  white-space: pre-wrap;
+  tab-size: 48px;
+  /* text-align in td comes from mammoth inline style — do not override */
+}
+
+/* ── Input fields: dotted underline = empty, solid = has value ── */
+.legal-doc-container input[data-field] {
+  border: none;
+  border-bottom: 2px dotted #666;    /* thicker dotted so it shows on mobile */
+  outline: none;
+  background: transparent;
+  padding: 1px 6px;
+  min-width: 80px;
+  font-family: 'Nirmala UI';
+  font-size: inherit;
+  color: #111;
+  font-weight: 400;
+  border-radius: 0;
+  margin: 0 1px;
+  vertical-align: baseline;
+  cursor: text;
+  transition: border-bottom 0.12s ease;
+}
+
+.legal-doc-container input[data-field]::placeholder {
+  color: transparent;   /* hide placeholder text — dotted line is the visual cue */
+}
+
+/* focused + still empty → slightly darker dotted */
+.legal-doc-container input[data-field]:focus:placeholder-shown {
+  border-bottom: 2px dotted #333;
+  background: rgba(30,58,95,0.04);
+}
+
+/* ✅ user has typed → remove dotted line entirely */
+.legal-doc-container input[data-field]:not(:placeholder-shown),
+.legal-doc-container input[data-field].has-value {
+  border-bottom: 2px solid transparent;
+}
+
+/* ✅ cleared back to empty → dotted returns */
+.legal-doc-container input[data-field]:placeholder-shown:not(.has-value) {
+  border-bottom: 2px dotted #666;
+}
+
+/* ── Preview Mode ── */
+.legal-doc-container.preview-mode input[data-field] {
+  border-bottom: 1.5px solid transparent;
+  pointer-events: none;
+  background: transparent;
+}
+.legal-doc-container.preview-mode input[data-field].has-value {
+  border-bottom: 1.5px solid #111;
+}
+
+/* ── Page number shown at the bottom of each A4 page ── */
+.a4-page-number {
+  text-align: center;
+  font-size: 9pt;
+  color: #aaa;
+  font-family: 'Nirmala UI', 'Hind', sans-serif;
+  margin-top: 32px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ── Print / PDF export ── */
+@media print {
+  body * { visibility: hidden; }
+  #printable-area, #printable-area * { visibility: visible; }
+  #printable-area {
+    position: fixed; top: 0; left: 0;
+    width: 210mm;
+    padding: 20mm 20mm 20mm 25mm;
+    font-family: 'Nirmala UI', 'Hind', 'Noto Sans Devanagari', sans-serif;
+    font-size: 11.5pt;
+    line-height: 1.85;
+    color: #111;
+    background: white;
+    zoom: 1 !important;
+  }
+  input[data-field] {
+    border: none !important;
+    border-bottom: 1px dotted #444 !important;
+    background: transparent !important;
+  }
+}
