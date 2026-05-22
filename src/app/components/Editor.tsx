@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as docx from "docx-preview";
-import { useGesture } from "@use-gesture/react";
 import { Download, Loader2, Eye, FileText, X, Printer } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { storage } from "../../lib/storage";
@@ -16,9 +15,7 @@ interface EditorProps {
   onExportPDF: () => void;
 }
 
-const A4_W     = 794;
-const MIN_ZOOM = 0.2;
-const MAX_ZOOM = 3.0;
+const A4_W = 794;
 
 /* ─────────────────────────────────────────────────────────────────
    Dot/underscore → input fields
@@ -77,117 +74,9 @@ function lockDocument(container: HTMLElement) {
   container.addEventListener("copy", e => {
     if ((e.target as HTMLElement).tagName !== "INPUT") e.preventDefault();
   });
-  (container.style as any).webkitUserSelect   = "none";
-  (container.style as any).userSelect          = "none";
-  (container.style as any).webkitTouchCallout  = "none";
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   Free drag — completely reliable approach:
-   1. Long-press 250ms activates drag
-   2. DOCUMENT-LEVEL pointermove listener (never loses the pointer)
-   3. translate() to move — no coordinate math needed
-   4. Scale division so movement matches finger even when zoomed
-   ───────────────────────────────────────────────────────────────── */
-function setupFreeDrag(
-  container: HTMLElement,
-  scaleRef: React.MutableRefObject<number>
-) {
-  // Match all text-block elements regardless of nesting depth
-  const SELECTOR = ".docx-wrapper p, .docx-wrapper h1, .docx-wrapper h2, .docx-wrapper h3, .docx-wrapper table";
-  const els = Array.from(container.querySelectorAll<HTMLElement>(SELECTOR));
-
-  els.forEach(el => {
-    // Give every element a visible dashed box so user knows it's draggable
-    el.style.outline      = "1px dashed rgba(30,58,95,0.20)";
-    el.style.borderRadius = "2px";
-    el.style.cursor       = "grab";
-    el.style.touchAction  = "none"; // this element won't scroll
-
-    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
-    let isDragging = false;
-    let tx = 0, ty = 0;           // cumulative translate in doc-space px
-    let lastX = 0, lastY = 0;
-    let startX = 0, startY = 0;
-    let activePointerId = -1;
-
-    // ── Document-level move/up handlers (attached only while dragging) ──
-    function onDocMove(e: PointerEvent) {
-      if (e.pointerId !== activePointerId) return;
-      if (!isDragging) return;
-      e.preventDefault();
-
-      const s = scaleRef.current;
-      tx += (e.clientX - lastX) / s;
-      ty += (e.clientY - lastY) / s;
-      el.style.transform = `translate(${tx}px, ${ty}px)`;
-      lastX = e.clientX;
-      lastY = e.clientY;
-    }
-
-    function onDocUp(e: PointerEvent) {
-      if (e.pointerId !== activePointerId) return;
-      endDrag();
-    }
-
-    function endDrag() {
-      document.removeEventListener("pointermove", onDocMove);
-      document.removeEventListener("pointerup",   onDocUp);
-      document.removeEventListener("pointercancel", onDocUp);
-      if (isDragging) {
-        isDragging = false;
-        el.style.cursor     = "grab";
-        el.style.zIndex     = "auto";
-        el.style.boxShadow  = "none";
-        el.style.background = "transparent";
-        el.style.outline    = "1px dashed rgba(30,58,95,0.20)";
-      }
-    }
-
-    // ── Pointerdown: start long-press timer ──
-    el.addEventListener("pointerdown", (e: PointerEvent) => {
-      if ((e.target as HTMLElement).tagName === "INPUT") return;
-      startX = lastX = e.clientX;
-      startY = lastY = e.clientY;
-      activePointerId = e.pointerId;
-
-      longPressTimer = setTimeout(() => {
-        isDragging = true;
-
-        // Visual: element lifts up
-        el.style.zIndex     = "500";
-        el.style.position   = "relative";
-        el.style.cursor     = "grabbing";
-        el.style.background = "rgba(255,255,255,0.95)";
-        el.style.boxShadow  = "0 8px 32px rgba(30,58,95,0.28)";
-        el.style.outline    = "2px solid #1e3a5f";
-
-        // Vibration feedback on Android
-        if (navigator.vibrate) navigator.vibrate(30);
-
-        // Attach document-level listeners — these NEVER miss the pointer
-        document.addEventListener("pointermove",   onDocMove, { passive: false });
-        document.addEventListener("pointerup",     onDocUp);
-        document.addEventListener("pointercancel", onDocUp);
-      }, 250);
-    });
-
-    // Cancel long-press if finger moves before 250ms (user is scrolling)
-    el.addEventListener("pointermove", (e: PointerEvent) => {
-      if (longPressTimer && !isDragging) {
-        const moved = Math.abs(e.clientX - startX) > 8 || Math.abs(e.clientY - startY) > 8;
-        if (moved) { clearTimeout(longPressTimer); longPressTimer = null; }
-      }
-    });
-
-    el.addEventListener("pointerup", () => {
-      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-    });
-    el.addEventListener("pointercancel", () => {
-      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-      if (isDragging) endDrag();
-    });
-  });
+  (container.style as any).webkitUserSelect  = "none";
+  (container.style as any).userSelect         = "none";
+  (container.style as any).webkitTouchCallout = "none";
 }
 
 /* ── Paper modal ──────────────────────────────────────────────────── */
@@ -220,29 +109,216 @@ function PaperSizeModal({ onSelect, onCancel }: { onSelect: (s: PaperSize) => vo
   );
 }
 
+/* ─────────────────────────────────────────────────────────────────
+   Custom touch-based pan & pinch-zoom hook
+   Works 100% reliably in Android WebView / Capacitor using raw
+   touchstart / touchmove / touchend — NOT pointer events.
+   ───────────────────────────────────────────────────────────────── */
+function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRef: React.RefObject<HTMLDivElement>) {
+  const stateRef = useRef({ x: 0, y: 0, scale: 1 });
+  const MIN_SCALE = 0.25;
+  const MAX_SCALE = 4.0;
+
+  const applyTransform = useCallback((x: number, y: number, scale: number, animate = false) => {
+    const el = contentRef.current;
+    if (!el) return;
+    el.style.transition = animate ? "transform 0.25s ease-out" : "none";
+    el.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    stateRef.current = { x, y, scale };
+  }, [contentRef]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const content = contentRef.current;
+    if (!viewport || !content) return;
+
+    let touch1 = { x: 0, y: 0 };
+    let touch2 = { x: 0, y: 0 };
+    let isPinching = false;
+    let isPanning = false;
+    let lastDist = 0;
+    let lastMidX = 0;
+    let lastMidY = 0;
+
+    // Velocity tracking for inertia
+    let velX = 0, velY = 0;
+    let lastTime = 0;
+    let prevX = 0, prevY = 0;
+    let rafId = 0;
+
+    function dist(t1: {x:number,y:number}, t2: {x:number,y:number}) {
+      return Math.hypot(t2.x - t1.x, t2.y - t1.y);
+    }
+    function mid(t1: {x:number,y:number}, t2: {x:number,y:number}) {
+      return { x: (t1.x + t2.x) / 2, y: (t1.y + t2.y) / 2 };
+    }
+
+    function clampPosition(x: number, y: number, scale: number) {
+      const vw = viewport.clientWidth;
+      const vh = viewport.clientHeight;
+      const scaledW = A4_W * scale;
+      const scaledH = content.scrollHeight * scale;
+      const minX = Math.min(0, vw - scaledW);
+      const maxX = Math.max(0, vw - scaledW);
+      const minY = Math.min(0, vh - scaledH);
+      const maxY = 0;
+      return {
+        x: Math.min(Math.max(x, minX), maxX),
+        y: Math.min(Math.max(y, minY), maxY),
+      };
+    }
+
+    function onTouchStart(e: TouchEvent) {
+      cancelAnimationFrame(rafId);
+      velX = 0; velY = 0;
+
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        touch1 = { x: t.clientX, y: t.clientY };
+        prevX = stateRef.current.x;
+        prevY = stateRef.current.y;
+        lastTime = Date.now();
+        isPanning = true;
+        isPinching = false;
+      } else if (e.touches.length === 2) {
+        isPinching = true;
+        isPanning = false;
+        const t1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        const t2 = { x: e.touches[1].clientX, y: e.touches[1].clientY };
+        lastDist = dist(t1, t2);
+        const m = mid(t1, t2);
+        lastMidX = m.x;
+        lastMidY = m.y;
+      }
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      e.preventDefault();
+
+      if (isPinching && e.touches.length === 2) {
+        const t1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        const t2 = { x: e.touches[1].clientX, y: e.touches[1].clientY };
+        const newDist = dist(t1, t2);
+        const m = mid(t1, t2);
+
+        const { x, y, scale } = stateRef.current;
+        const scaleFactor = newDist / lastDist;
+        let newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * scaleFactor));
+
+        // Zoom towards the midpoint between fingers
+        const rect = viewport.getBoundingClientRect();
+        const pinchX = m.x - rect.left;
+        const pinchY = m.y - rect.top;
+        const newX = pinchX - (pinchX - x) * (newScale / scale) + (m.x - lastMidX);
+        const newY = pinchY - (pinchY - y) * (newScale / scale) + (m.y - lastMidY);
+
+        applyTransform(newX, newY, newScale);
+        lastDist = newDist;
+        lastMidX = m.x;
+        lastMidY = m.y;
+
+      } else if (isPanning && e.touches.length === 1) {
+        const t = e.touches[0];
+        const now = Date.now();
+        const dt = now - lastTime;
+        const dx = t.clientX - touch1.x;
+        const dy = t.clientY - touch1.y;
+
+        if (dt > 0) {
+          velX = dx / dt * 16;
+          velY = dy / dt * 16;
+        }
+        lastTime = now;
+        touch1 = { x: t.clientX, y: t.clientY };
+
+        const newX = stateRef.current.x + dx;
+        const newY = stateRef.current.y + dy;
+        applyTransform(newX, newY, stateRef.current.scale);
+      }
+    }
+
+    function onTouchEnd(e: TouchEvent) {
+      if (e.touches.length === 0) {
+        if (isPanning) {
+          // Inertia: glide to a stop
+          let { x, y, scale } = stateRef.current;
+          const friction = 0.92;
+          function inertia() {
+            velX *= friction;
+            velY *= friction;
+            if (Math.abs(velX) < 0.3 && Math.abs(velY) < 0.3) {
+              // Snap to bounds
+              const clamped = clampPosition(x, y, scale);
+              if (clamped.x !== x || clamped.y !== y) {
+                applyTransform(clamped.x, clamped.y, scale, true);
+              }
+              return;
+            }
+            x += velX;
+            y += velY;
+            applyTransform(x, y, scale);
+            rafId = requestAnimationFrame(inertia);
+          }
+          rafId = requestAnimationFrame(inertia);
+        }
+
+        if (isPinching) {
+          // Snap scale bounds after pinch
+          const { x, y, scale } = stateRef.current;
+          const clamped = clampPosition(x, y, scale);
+          applyTransform(clamped.x, clamped.y, scale, true);
+        }
+
+        isPanning = false;
+        isPinching = false;
+      } else if (e.touches.length === 1) {
+        // One finger lifted during pinch → switch to pan
+        isPinching = false;
+        isPanning = true;
+        touch1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        velX = 0; velY = 0;
+      }
+    }
+
+    viewport.addEventListener("touchstart", onTouchStart, { passive: false });
+    viewport.addEventListener("touchmove",  onTouchMove,  { passive: false });
+    viewport.addEventListener("touchend",   onTouchEnd,   { passive: true });
+    viewport.addEventListener("touchcancel",onTouchEnd,   { passive: true });
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      viewport.removeEventListener("touchstart", onTouchStart);
+      viewport.removeEventListener("touchmove",  onTouchMove);
+      viewport.removeEventListener("touchend",   onTouchEnd);
+      viewport.removeEventListener("touchcancel",onTouchEnd);
+    };
+  }, [viewportRef, contentRef, applyTransform]);
+
+  return { applyTransform, stateRef };
+}
+
 /* ── Main Editor ─────────────────────────────────────────────────── */
-export function Editor({ formId, onBack }: EditorProps) {
+export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
   const [isLoading,      setIsLoading]      = useState(true);
   const [pageCount,      setPageCount]      = useState(0);
   const [previewHtml,    setPreviewHtml]    = useState<string | null>(null);
   const [showPaperModal, setShowPaperModal] = useState(false);
   const [exportingPDF,   setExportingPDF]   = useState(false);
 
-  const scaleRef   = useRef(1);          // current zoom level
-  const scalerRef  = useRef<HTMLDivElement>(null); // the CSS-zoomed div
-  const wrapperRef = useRef<HTMLDivElement>(null); // scroll container
-  const docxRef    = useRef<HTMLDivElement>(null); // docx-preview target
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const contentRef  = useRef<HTMLDivElement>(null);
+  const docxRef     = useRef<HTMLDivElement>(null);
 
   const template = getTemplateById(formId);
 
-  /* ── Initial fit ── */
+  const { applyTransform, stateRef } = useTouchPanZoom(viewportRef, contentRef);
+
+  /* ── Set initial scale to fit A4 width on screen ── */
   useEffect(() => {
-    const fit = parseFloat(Math.min(1, (window.innerWidth - 8) / A4_W).toFixed(3));
-    scaleRef.current = fit;
-    // CSS zoom property: affects layout so scroll works correctly,
-    // and renders from top-center when combined with margin:auto
-    if (scalerRef.current) (scalerRef.current.style as any).zoom = fit;
-  }, []);
+    const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
+    const x = (window.innerWidth - A4_W * scale) / 2;
+    applyTransform(x, 0, scale);
+  }, [applyTransform]);
 
   /* ── Load docx ── */
   useEffect(() => {
@@ -260,59 +336,17 @@ export function Editor({ formId, onBack }: EditorProps) {
         if (!docxRef.current) return;
         injectAndWire(docxRef.current);
         lockDocument(docxRef.current);
-        setupFreeDrag(docxRef.current, scaleRef);
         setPageCount(docxRef.current.querySelectorAll(".docx-wrapper > section, .docx").length || 1);
+        // Re-center after content loads
+        setTimeout(() => {
+          const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
+          const x = (window.innerWidth - A4_W * scale) / 2;
+          applyTransform(x, 0, scale);
+        }, 50);
       })
       .catch(e => { console.error(e); toast.error("Could not load template."); })
       .finally(() => setIsLoading(false));
-  }, [formId, template]);
-
-  /* ── Pinch-to-zoom via @use-gesture ─────────────────────────────
-     Uses CSS `zoom` property via direct DOM (no React re-render = fast).
-     CSS zoom affects layout so scroll height updates automatically.
-     zoom property zooms from top-left; we center the div with margin:auto.
-
-     For pinch ORIGIN (zoom towards where fingers are):
-     We adjust scrollLeft/scrollTop to simulate "zoom at finger position".
-     ─────────────────────────────────────────────────────────────── */
-  useGesture(
-    {
-      onPinch: ({ offset: [s], origin: [ox, oy], first, memo, event }) => {
-        event?.preventDefault();
-        const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, s));
-        const oldZoom = scaleRef.current;
-
-        if (scalerRef.current && wrapperRef.current) {
-          const wrapper = wrapperRef.current;
-
-          // Where the pinch center is relative to the scroll container
-          const wRect = wrapper.getBoundingClientRect();
-          const pinchX = ox - wRect.left + wrapper.scrollLeft;
-          const pinchY = oy - wRect.top  + wrapper.scrollTop;
-
-          // Apply zoom via CSS zoom (layout-aware, fast)
-          (scalerRef.current.style as any).zoom = newZoom;
-
-          // Adjust scroll so pinch center stays fixed in view
-          const ratio = newZoom / oldZoom;
-          wrapper.scrollLeft = pinchX * ratio - (ox - wRect.left);
-          wrapper.scrollTop  = pinchY * ratio - (oy - wRect.top);
-        }
-
-        scaleRef.current = newZoom;
-        return memo;
-      },
-    },
-    {
-      target: wrapperRef,
-      pinch: {
-        from:        () => [scaleRef.current, 0],
-        scaleBounds: { min: MIN_ZOOM, max: MAX_ZOOM },
-        rubberband:  true,
-      },
-      eventOptions: { passive: false },
-    }
-  );
+  }, [formId, template, applyTransform]);
 
   /* ── Preview ── */
   const handlePreview = useCallback(() => {
@@ -337,18 +371,42 @@ export function Editor({ formId, onBack }: EditorProps) {
     setShowPaperModal(false);
     handleSave();
     setExportingPDF(true);
-    toast.info(`Generating ${size.toUpperCase()} PDF…`);
-    await new Promise(r => setTimeout(r, 100));
-    try {
-      await generatePDF({
-        elementId: "printable-area",
-        filename:  `${template?.name || "legal-document"}-${Date.now()}.pdf`,
-        paperSize: size,
-        onSuccess: () => toast.success("PDF downloaded!"),
-        onError:   () => toast.error("PDF failed. Try again."),
-      });
-    } finally { setExportingPDF(false); }
+
+    const performExport = async () => {
+      toast.info(`Generating ${size.toUpperCase()} PDF…`);
+      const { x: ox, y: oy, scale: os } = stateRef.current;
+
+      // Reset to 1:1 scale for pixel-perfect PDF capture
+      applyTransform(0, 0, 1);
+      await new Promise(r => setTimeout(r, 200));
+
+      try {
+        await generatePDF({
+          elementId: "docx-print-target",
+          filename:  `${template?.name || "legal-document"}-${Date.now()}.pdf`,
+          paperSize: size,
+          onSuccess: () => toast.success("PDF downloaded!"),
+          onError:   () => toast.error("PDF failed. Try again."),
+        });
+      } catch (err) {
+        console.error("PDF generation failed:", err);
+        toast.error("PDF failed. Try again.");
+      } finally {
+        applyTransform(ox, oy, os);
+        setExportingPDF(false);
+      }
+    };
+
+    if (onExportPDF) {
+      onExportPDF(() => { performExport(); });
+      setExportingPDF(false);
+    } else {
+      await performExport();
+    }
   };
+
+  // Preview scale: fit A4 width to screen
+  const previewScale = Math.min(1, (window.innerWidth - 16) / A4_W);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100dvh", overflow: "hidden" }}>
@@ -359,7 +417,7 @@ export function Editor({ formId, onBack }: EditorProps) {
         onBack={onBack}
       />
 
-      {/* Toolbar — minimal */}
+      {/* Toolbar */}
       <div style={{ background: "white", borderBottom: "1px solid #e2e8f0", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px" }}>
           <span style={{ fontSize: 11, color: "#94a3b8" }}>
@@ -378,69 +436,70 @@ export function Editor({ formId, onBack }: EditorProps) {
         </div>
       </div>
 
-      {/* Scroll + pinch area */}
+      {/* Pan & Zoom Viewport — raw touch events, works 100% in Capacitor */}
       <div
-        ref={wrapperRef}
-        id="printable-area"
+        ref={viewportRef}
         style={{
           flex: 1,
-          overflow: "auto",
+          overflow: "hidden",
           background: "#cbd5e1",
-          // Allow one-finger scroll natively; we intercept pinch
-          touchAction: "pan-x pan-y",
-          overscrollBehavior: "contain",
+          position: "relative",
+          touchAction: "none",   // Let our JS handle ALL touch gestures
+          userSelect: "none",
         }}
       >
-        {/* Centering wrapper */}
-        <div style={{ display: "flex", justifyContent: "center", padding: "24px 0 40px", minHeight: "100%" }}>
-          {/*
-            scalerRef: CSS zoom property (layout-aware, affects scrollHeight).
-            margin:auto centers the page horizontally at any zoom level.
-          */}
-          <div
-            ref={scalerRef}
-            style={{
-              width: A4_W,
-              flexShrink: 0,
-              // zoom applied via DOM in useEffect above
-            }}
-          >
-            <div style={{ position: "relative" }}>
-              {isLoading && (
-                <div style={{ position: "absolute", inset: 0, zIndex: 10, background: "white", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, minHeight: 600 }}>
-                  <Loader2 className="animate-spin text-slate-400" size={32} />
-                  <p style={{ color: "#94a3b8", fontSize: 13, fontWeight: 500 }}>Loading template…</p>
-                </div>
-              )}
-              <div
-                ref={docxRef}
-                className="legal-doc-container"
-                style={{
-                  visibility: isLoading ? "hidden" : "visible",
-                  WebkitUserSelect: "none",
-                  userSelect: "none",
-                } as React.CSSProperties}
-              />
-            </div>
+        {/* Loading overlay */}
+        {isLoading && (
+          <div style={{ position: "absolute", inset: 0, zIndex: 10, background: "#cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+            <Loader2 className="animate-spin text-slate-500" size={32} />
+            <p style={{ color: "#64748b", fontSize: 13, fontWeight: 500 }}>Loading template…</p>
           </div>
+        )}
+
+        {/* Transformable content — origin top-left for correct pinch math */}
+        <div
+          ref={contentRef}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            transformOrigin: "0 0",
+            willChange: "transform",
+            width: `${A4_W}px`,
+            padding: "24px 0 40px",
+          }}
+        >
+          <div id="docx-print-target" ref={docxRef} className="legal-doc-container"
+            style={{
+              visibility: isLoading ? "hidden" : "visible",
+              WebkitUserSelect: "none",
+              userSelect: "none",
+            } as React.CSSProperties}
+          />
         </div>
       </div>
 
-      {/* Preview modal */}
+      {/* Preview modal — correctly scaled to fit screen */}
       {previewHtml && (
         <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.85)", display: "flex", flexDirection: "column" }}>
-          <div style={{ background: "white", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0" }}>
+          <div style={{ background: "white", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#0f172a" }}>Document Preview</h3>
               <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>Exactly how PDF will look</p>
             </div>
             <button onClick={() => setPreviewHtml(null)} style={{ background: "#e2e8f0", border: "none", padding: "8px 16px", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Close</button>
           </div>
-          <div style={{ flex: 1, overflowY: "auto", background: "#cbd5e1" }} className="legal-doc-container">
-            <div style={{ display: "flex", justifyContent: "center", padding: "24px 0 40px" }}>
-              <div style={{ width: A4_W }}>
-                <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
-              </div>
+          {/* Scroll container */}
+          <div style={{ flex: 1, overflowY: "auto", background: "#cbd5e1" }}>
+            {/* Scale wrapper: shrinks A4 to fit phone width, origin top-center */}
+            <div style={{
+              width: `${A4_W}px`,
+              transformOrigin: "top left",
+              transform: `scale(${previewScale})`,
+              // Collapse the extra whitespace caused by scaling down
+              marginBottom: `-${A4_W * (1 - previewScale)}px`,
+            }}>
+              <div className="legal-doc-container" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>
           </div>
         </div>

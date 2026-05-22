@@ -5,6 +5,7 @@ import { courts } from "../../lib/legalData";
 import {
   getTemplatesByCategory,
   getAvailableLanguages,
+  getTemplatesForCourt,
   type Language,
   type TemplateFile,
 } from "../../lib/templateRegistry";
@@ -16,7 +17,7 @@ interface CourtModuleProps {
 }
 
 // ── "English not available" popup ─────────────────────────────────
-function EnglishComingSoonModal({ onClose }: { onClose: () => void }) {
+function EnglishComingSoonModal({ onClose, onConfirm }: { onClose: () => void; onConfirm?: () => void }) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -39,10 +40,10 @@ function EnglishComingSoonModal({ onClose }: { onClose: () => void }) {
             <Globe className="w-7 h-7 text-amber-500" />
           </div>
           <h2 className="text-lg font-bold text-gray-900 text-center">
-            English Templates Not Available
+            English Template Not Available
           </h2>
           <p className="text-sm text-gray-500 text-center mt-1">
-            These documents are currently available in Hindi only.
+            This document is currently available in Hindi only.
           </p>
         </div>
 
@@ -51,8 +52,7 @@ function EnglishComingSoonModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-start gap-3 bg-blue-50 rounded-2xl p-4">
             <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-blue-700 leading-relaxed">
-              English versions are coming soon! We will notify you when they are ready.
-              For now, please use the <strong>हिंदी</strong> templates.
+              The English version is coming soon! For now, please use the <strong>हिंदी</strong> template.
             </p>
           </div>
         </div>
@@ -60,10 +60,13 @@ function EnglishComingSoonModal({ onClose }: { onClose: () => void }) {
         {/* Actions */}
         <div className="px-6 pb-6 flex gap-3">
           <button
-            onClick={onClose}
+            onClick={() => {
+              if (onConfirm) onConfirm();
+              onClose();
+            }}
             className="flex-1 bg-[#1e3a5f] text-white font-bold py-3 rounded-2xl text-sm hover:bg-[#16304f] transition-colors"
           >
-            Use हिंदी Templates
+            Use हिंदी Template
           </button>
         </div>
       </motion.div>
@@ -92,35 +95,77 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
   const title = court?.title || "Court";
 
   const availableLangs = useMemo(() => getAvailableLanguages(courtId), [courtId]);
-  const [language, setLanguage] = useState<Language>(
-    availableLangs.includes("hi") ? "hi" : "en"
-  );
+  const [language, setLanguage] = useState<Language>("hi");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [showEnglishModal, setShowEnglishModal] = useState(false);
+  const [pendingTemplate, setPendingTemplate] = useState<TemplateFile | null>(null);
 
   // Check if English templates actually exist
   const hasEnglish = availableLangs.includes("en");
 
-  // Switch language — show popup if English isn't available
+  // Switch language — always allowed now!
   const handleLangSwitch = (lang: Language) => {
-    if (lang === "en" && !hasEnglish) {
+    setLanguage(lang);
+  };
+
+  const handleTemplateClick = (template: TemplateFile) => {
+    if (language === "en" && template.language === "hi") {
+      setPendingTemplate(template);
       setShowEnglishModal(true);
       return;
     }
-    setLanguage(lang);
+    onSelectForm(template.id);
+  };
+
+  const handleModalConfirm = () => {
+    if (pendingTemplate) {
+      onSelectForm(pendingTemplate.id);
+      setPendingTemplate(null);
+    }
   };
 
   const handleModalClose = () => {
     setShowEnglishModal(false);
-    setLanguage("hi"); // Switch back to Hindi
+    setPendingTemplate(null);
   };
 
-  // All templates grouped by category
-  const allCategories = useMemo(
-    () => getTemplatesByCategory(courtId, language),
-    [courtId, language]
-  );
+  // Get all templates for the court
+  const allTemplates = useMemo(() => getTemplatesForCourt(courtId), [courtId]);
+
+  // Filter templates choosing the best language representation
+  const displayedTemplates = useMemo(() => {
+    const groups: Record<string, TemplateFile[]> = {};
+    for (const t of allTemplates) {
+      if (!groups[t.id]) groups[t.id] = [];
+      groups[t.id].push(t);
+    }
+
+    const selected: TemplateFile[] = [];
+    for (const [id, list] of Object.entries(groups)) {
+      const hiVer = list.find(t => t.language === "hi");
+      const enVer = list.find(t => t.language === "en");
+
+      if (language === "en") {
+        if (enVer) selected.push(enVer);
+        else if (hiVer) selected.push(hiVer);
+      } else {
+        if (hiVer) selected.push(hiVer);
+        else if (enVer) selected.push(enVer);
+      }
+    }
+    return selected;
+  }, [allTemplates, language]);
+
+  // Group displayed templates by category
+  const allCategories = useMemo(() => {
+    const grouped: Record<string, TemplateFile[]> = {};
+    for (const t of displayedTemplates) {
+      if (!grouped[t.description]) grouped[t.description] = [];
+      grouped[t.description].push(t);
+    }
+    return grouped;
+  }, [displayedTemplates]);
 
   // Search filter
   const filteredCategories = useMemo(() => {
@@ -202,10 +247,6 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
               }`}
             >
               EN
-              {/* "coming soon" dot indicator if English not available */}
-              {!hasEnglish && (
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full border border-white" />
-              )}
             </button>
           </div>
         </div>
@@ -226,12 +267,6 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
           }`}>
             {language === "hi" ? "हिंदी" : "English"}
           </span>
-          {/* Coming soon label */}
-          {!hasEnglish && (
-            <span className="text-xs bg-amber-100 text-amber-600 font-semibold px-2 py-0.5 rounded-full">
-              EN coming soon
-            </span>
-          )}
         </div>
       </div>
 
@@ -312,7 +347,7 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
                           initial={{ opacity: 0, x: -8 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: idx * 0.025 }}
-                          onClick={() => onSelectForm(template.id)}
+                          onClick={() => handleTemplateClick(template)}
                           className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-[#9b1c31]/5 transition-colors text-left group"
                         >
                           {/* Language badge */}
@@ -338,7 +373,7 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
       {/* ── English not available modal ── */}
       <AnimatePresence>
         {showEnglishModal && (
-          <EnglishComingSoonModal onClose={handleModalClose} />
+          <EnglishComingSoonModal onClose={handleModalClose} onConfirm={handleModalConfirm} />
         )}
       </AnimatePresence>
     </div>

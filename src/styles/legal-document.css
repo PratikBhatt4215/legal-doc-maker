@@ -8,6 +8,20 @@
  * — those inline styles must win. Any CSS text-align here would override them.
  */
 
+/* ── docx-preview wrapper overrides ── */
+.docx-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
+
+.docx-wrapper > section.docx {
+  margin: 0 auto 24px auto !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+  border-radius: 4px !important;
+}
 
 /* ── Base ── */
 .legal-doc,

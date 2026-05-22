@@ -10,10 +10,22 @@ const config: CapacitorConfig = {
   appName: 'legal doc maker',
   webDir: 'dist',
   server: {
-    url: 'http://192.168.0.109:5173',  // Your Mac's IP on WiFi
-    cleartext: true                     // Required for HTTP on Android
+    url: 'http://192.168.0.109:5173',
+    cleartext: true
+  },
+  plugins: {
+    SplashScreen: {
+      launchShowDuration: 30000,
+      launchAutoHide: false,
+      backgroundColor: "#1e3a5f",
+      androidScaleType: "CENTER_CROP",
+      showSpinner: true,
+      androidSpinnerStyle: "large",
+      spinnerColor: "#ffffff",
+      splashFullScreen: true,
+      splashImmersive: true
+    }
   }
 };
 
 export default config;
-

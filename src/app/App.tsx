@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Toaster } from "sonner";
 import { SplashScreen } from "./components/SplashScreen";
+import { SplashScreen as CapSplashScreen } from "@capacitor/splash-screen";
 import { LanguageSelection } from "./components/LanguageSelection";
 import { TermsAndConditions } from "./components/TermsAndConditions";
 import { LoginSignup } from "./components/LoginSignup";
@@ -11,7 +12,6 @@ import { Payment } from "./components/Payment";
 import { Profile } from "./components/Profile";
 import { AdminPanel } from "./components/AdminPanel";
 import { storage } from "../lib/storage";
-import { generatePDF } from "../lib/pdfGenerator";
 import { toast } from "sonner";
 import { Language } from "../lib/i18n";
 
@@ -74,11 +74,15 @@ export default function App() {
   const [selectedCourt, setSelectedCourt] = useState<string>("");
   const [selectedForm, setSelectedForm] = useState<string>("");
   const [showPayment, setShowPayment] = useState(false);
+  const [paymentSuccessCallback, setPaymentSuccessCallback] = useState<(() => void) | null>(null);
   const [userData, setUserData] = useState<any>(null);
   const [userId, setUserId] = useState<string>("");
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   useEffect(() => {
+    // Hide the native splash screen to transition into our custom React splash screen
+    CapSplashScreen.hide().catch(() => {});
+
     // ── 1. Load persisted preferences ──
     const accepted = localStorage.getItem("termsAccepted") === "true";
     setTermsAccepted(accepted);
@@ -176,20 +180,17 @@ export default function App() {
     saveNavState("dashboard", "", "");
   };
 
-  const handleExportPDF = () => setShowPayment(true);
+  const handleExportPDF = (onSuccess: () => void) => {
+    setPaymentSuccessCallback(() => onSuccess);
+    setShowPayment(true);
+  };
 
-  const handlePaymentSuccess = async (paymentId: string) => {
+  const handlePaymentSuccess = (paymentId: string) => {
     setShowPayment(false);
     toast.success("Payment successful! Generating PDF...");
-    try {
-      await generatePDF({
-        elementId: "printable-area",
-        filename: `legal-document-${selectedForm}-${Date.now()}.pdf`,
-        onSuccess: () => toast.success("PDF downloaded successfully!"),
-        onError: (e) => { console.error(e); toast.error("Failed to generate PDF."); },
-      });
-    } catch (e) {
-      toast.error("PDF generation failed.");
+    if (paymentSuccessCallback) {
+      paymentSuccessCallback();
+      setPaymentSuccessCallback(null);
     }
   };
 
@@ -270,7 +271,10 @@ export default function App() {
 
       {showPayment && (
         <Payment
-          onClose={() => setShowPayment(false)}
+          onClose={() => {
+            setShowPayment(false);
+            setPaymentSuccessCallback(null);
+          }}
           onSuccess={handlePaymentSuccess}
           userInfo={{
             name: userData?.displayName || "User",
