@@ -91,41 +91,41 @@
   /* text-align in td comes from mammoth inline style — do not override */
 }
 
-/* ── Input fields: Premium slate-bordered layout ── */
+/* ── Input fields: Dotted underlines for inline text, styled borders for tables ── */
 .legal-doc-container input[data-field] {
-  border: 1.5px solid #cbd5e1 !important; /* solid, clean light border */
-  border-radius: 6px !important;
+  border: none !important;
+  border-bottom: 2px dotted #666 !important; /* pristine dotted underline */
+  border-radius: 0 !important;
   outline: none !important;
-  background: #f8fafc !important; /* soft, premium off-white backdrop */
-  padding: 4px 8px !important;
+  background: transparent !important; /* transparent to blend inside text */
+  padding: 1px 4px !important;
   min-width: 80px;
   font-family: 'Nirmala UI';
   font-size: inherit;
-  color: #1e293b !important;
+  color: #111 !important;
   font-weight: 500 !important;
   box-sizing: border-box !important;
-  margin: 2px 4px !important;
-  vertical-align: middle !important;
+  margin: 0 2px !important;
+  vertical-align: baseline !important;
   cursor: text;
-  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  box-shadow: inset 0 1px 2px rgba(0,0,0,0.02) !important;
+  transition: border-bottom 0.12s ease !important;
+  box-shadow: none !important;
 }
 
 .legal-doc-container input[data-field]::placeholder {
-  color: #94a3b8 !important;   /* subtle placeholder */
-  opacity: 0.7;
+  color: transparent !important;   /* hide placeholder */
 }
 
-/* focused input field */
+/* focused inline input field */
 .legal-doc-container input[data-field]:focus {
-  border-color: #9b1c31 !important; /* active brand color */
-  background: #ffffff !important;
-  box-shadow: 0 0 0 3px rgba(155, 28, 49, 0.15), inset 0 1px 1px rgba(0,0,0,0.02) !important;
+  border-bottom: 2px solid #9b1c31 !important; /* solid brand-burgundy bottom border on focus */
+  background: rgba(155, 28, 49, 0.03) !important; /* extremely subtle highlight */
 }
 
 /* input fields located inside table cells: seamlessly blend inside the td */
 .legal-doc td input[data-field] {
   border: none !important;
+  border-bottom: none !important;
   border-radius: 0 !important;
   background: transparent !important;
   width: 100% !important;
@@ -134,20 +134,18 @@
   margin: 0 !important;
   padding: 6px 10px !important;
   box-shadow: none !important;
+  vertical-align: middle !important;
 }
 .legal-doc td input[data-field]:focus {
   background: rgba(30, 58, 95, 0.04) !important;
-  box-shadow: none !important;
 }
 
 /* ✅ user has typed styles in editor */
 .legal-doc-container input[data-field].has-value {
-  border-color: #cbd5e1 !important;
-  background: #f8fafc !important;
+  border-bottom: 2px solid transparent !important; /* hide line when filled to look like clean typed text */
 }
 .legal-doc-container input[data-field].has-value:focus {
-  border-color: #9b1c31 !important;
-  background: #ffffff !important;
+  border-bottom: 2px solid #9b1c31 !important;
 }
 
 /* ── Preview Mode & Print Export ── */

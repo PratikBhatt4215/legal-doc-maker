@@ -348,19 +348,22 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
       .then(blob => docx.renderAsync(blob, docxRef.current!, null, {
         inWrapper: true, ignoreWidth: false, ignoreHeight: false,
         ignoreFonts: false, breakPages: true, useBase64URL: true,
-        className: "legal-doc",
+        className: "docx",
       }))
       .then(() => {
         if (!docxRef.current) return;
         injectAndWire(docxRef.current);
         lockDocument(docxRef.current);
-        setPageCount(docxRef.current.querySelectorAll(".docx-wrapper > section, .docx").length || 1);
-        // Re-center after content loads
+        
+        // Center and set pageCount after rendering and pagination settle
         setTimeout(() => {
+          if (docxRef.current) {
+            setPageCount(docxRef.current.querySelectorAll(".docx-wrapper > section, .docx").length || 1);
+          }
           const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
           const x = (window.innerWidth - A4_W * scale) / 2;
           applyTransform(x, 0, scale);
-        }, 50);
+        }, 400);
       })
       .catch(e => { console.error(e); toast.error("Could not load template."); })
       .finally(() => setIsLoading(false));
