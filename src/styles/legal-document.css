@@ -18,9 +18,16 @@
 }
 
 .docx-wrapper > section.docx {
-  margin: 0 auto 24px auto !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+  width: 794px !important;
+  height: 1123px !important;
+  box-sizing: border-box !important;
+  padding: 120px 96px 96px 120px !important; /* spacious top-left-right-bottom legal margins */
+  margin: 0 auto 32px auto !important;
+  background: #ffffff !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08) !important;
   border-radius: 4px !important;
+  position: relative !important;
+  overflow: hidden !important; /* keeps content strictly within pages */
 }
 
 /* ── Base ── */
@@ -144,7 +151,8 @@
 }
 
 /* input fields located inside table cells: seamlessly blend inside the td */
-.legal-doc td input[data-field] {
+.legal-doc td input[data-field],
+.legal-doc-container td input[data-field] {
   border: none !important;
   border-bottom: none !important;
   border-radius: 0 !important;
@@ -157,7 +165,8 @@
   box-shadow: none !important;
   vertical-align: middle !important;
 }
-.legal-doc td input[data-field]:focus {
+.legal-doc td input[data-field]:focus,
+.legal-doc-container td input[data-field]:focus {
   background: rgba(30, 58, 95, 0.04) !important;
 }
 
