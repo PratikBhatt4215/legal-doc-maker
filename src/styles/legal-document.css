@@ -73,72 +73,98 @@
 .legal-doc ol, .legal-doc ul { padding-left: 1.5em; margin: 0.2em 0; }
 .legal-doc li { margin: 0.15em 0; line-height: 1.85; white-space: pre-wrap; tab-size: 48px; }
 
-/* ── Tables (mammoth uses tables for tab-stop layouts like the applicant section) ── */
+/* ── Tables (mammoth and docx-preview use tables for tab-stop layouts and grid data) ── */
 .legal-doc table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 0.2em 0;
-  table-layout: auto;         /* allow columns to size naturally from content */
+  width: 100% !important;
+  border-collapse: collapse !important;
+  margin: 16px 0 !important;
+  table-layout: auto !important;
 }
 .legal-doc td, .legal-doc th {
-  padding: 1px 4px;
-  vertical-align: baseline;
-  border: none;
-  font-size: 11.5pt;
-  line-height: 1.85;
+  padding: 8px 12px !important;  /* spacious cells like original document */
+  vertical-align: middle !important;
+  border: 1px solid #1e293b; /* crisp grid borders as seen in Word document, fallback */
+  font-size: 11.5pt !important;
+  line-height: 1.65 !important;
   white-space: pre-wrap;
   tab-size: 48px;
   /* text-align in td comes from mammoth inline style — do not override */
 }
 
-/* ── Input fields: dotted underline = empty, solid = has value ── */
+/* ── Input fields: Premium slate-bordered layout ── */
 .legal-doc-container input[data-field] {
-  border: none;
-  border-bottom: 2px dotted #666;    /* thicker dotted so it shows on mobile */
-  outline: none;
-  background: transparent;
-  padding: 1px 6px;
+  border: 1.5px solid #cbd5e1 !important; /* solid, clean light border */
+  border-radius: 6px !important;
+  outline: none !important;
+  background: #f8fafc !important; /* soft, premium off-white backdrop */
+  padding: 4px 8px !important;
   min-width: 80px;
   font-family: 'Nirmala UI';
   font-size: inherit;
-  color: #111;
-  font-weight: 400;
-  border-radius: 0;
-  margin: 0 1px;
-  vertical-align: baseline;
+  color: #1e293b !important;
+  font-weight: 500 !important;
+  box-sizing: border-box !important;
+  margin: 2px 4px !important;
+  vertical-align: middle !important;
   cursor: text;
-  transition: border-bottom 0.12s ease;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.02) !important;
 }
 
 .legal-doc-container input[data-field]::placeholder {
-  color: transparent;   /* hide placeholder text — dotted line is the visual cue */
+  color: #94a3b8 !important;   /* subtle placeholder */
+  opacity: 0.7;
 }
 
-/* focused + still empty → slightly darker dotted */
-.legal-doc-container input[data-field]:focus:placeholder-shown {
-  border-bottom: 2px dotted #333;
-  background: rgba(30,58,95,0.04);
+/* focused input field */
+.legal-doc-container input[data-field]:focus {
+  border-color: #9b1c31 !important; /* active brand color */
+  background: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(155, 28, 49, 0.15), inset 0 1px 1px rgba(0,0,0,0.02) !important;
 }
 
-/* ✅ user has typed → remove dotted line entirely */
-.legal-doc-container input[data-field]:not(:placeholder-shown),
+/* input fields located inside table cells: seamlessly blend inside the td */
+.legal-doc td input[data-field] {
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  width: 100% !important;
+  min-width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 6px 10px !important;
+  box-shadow: none !important;
+}
+.legal-doc td input[data-field]:focus {
+  background: rgba(30, 58, 95, 0.04) !important;
+  box-shadow: none !important;
+}
+
+/* ✅ user has typed styles in editor */
 .legal-doc-container input[data-field].has-value {
-  border-bottom: 2px solid transparent;
+  border-color: #cbd5e1 !important;
+  background: #f8fafc !important;
+}
+.legal-doc-container input[data-field].has-value:focus {
+  border-color: #9b1c31 !important;
+  background: #ffffff !important;
 }
 
-/* ✅ cleared back to empty → dotted returns */
-.legal-doc-container input[data-field]:placeholder-shown:not(.has-value) {
-  border-bottom: 2px dotted #666;
+/* ── Preview Mode & Print Export ── */
+.legal-doc-container.preview-mode input[data-field],
+.preview-mode input[data-field] {
+  border: none !important;
+  border-bottom: 1.5px dotted #666 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding: 0 4px !important;
+  pointer-events: none !important;
+  box-shadow: none !important;
 }
-
-/* ── Preview Mode ── */
-.legal-doc-container.preview-mode input[data-field] {
-  border-bottom: 1.5px solid transparent;
-  pointer-events: none;
-  background: transparent;
-}
-.legal-doc-container.preview-mode input[data-field].has-value {
-  border-bottom: 1.5px solid #111;
+.legal-doc-container.preview-mode input[data-field].has-value,
+.preview-mode input[data-field].has-value {
+  border-bottom: 1.5px solid transparent !important;
+  color: #111 !important;
 }
 
 /* ── Page number shown at the bottom of each A4 page ── */

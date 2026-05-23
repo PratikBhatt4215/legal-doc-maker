@@ -1,11 +1,12 @@
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, FileText, ChevronRight, Search, X, Globe, AlertCircle } from "lucide-react";
+import { ArrowLeft, FileText, ChevronRight, Search, X, Globe, AlertCircle, Folder } from "lucide-react";
 import { useState, useMemo } from "react";
 import { courts } from "../../lib/legalData";
 import {
   getTemplatesByCategory,
   getAvailableLanguages,
   getTemplatesForCourt,
+  CATEGORY_DISPLAY_NAMES,
   type Language,
   type TemplateFile,
 } from "../../lib/templateRegistry";
@@ -89,6 +90,110 @@ function LangBadge({ lang }: { lang: "hi" | "en" }) {
     </span>
   );
 }
+// ── Recursive Folder Node and View Rendering ──────────────────────────
+interface FolderNode {
+  name: string;
+  subfolders: Record<string, FolderNode>;
+  templates: TemplateFile[];
+}
+
+function FolderView({
+  node,
+  level = 0,
+  onSelectTemplate,
+  language,
+  searchActive,
+}: {
+  node: FolderNode;
+  level?: number;
+  onSelectTemplate: (t: TemplateFile) => void;
+  language: Language;
+  searchActive: boolean;
+}) {
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+
+  const toggleFolder = (folderKey: string) => {
+    setExpandedFolders(prev => ({
+      ...prev,
+      [folderKey]: !prev[folderKey],
+    }));
+  };
+
+  const subfolders = Object.entries(node.subfolders);
+  const templates = node.templates;
+
+  return (
+    <div className="flex flex-col w-full">
+      {/* Subfolders */}
+      {subfolders.map(([folderKey, subNode]) => {
+        const isFolderExpanded = expandedFolders[folderKey] || searchActive;
+        return (
+          <div key={folderKey} className="w-full flex flex-col">
+            <button
+              onClick={() => toggleFolder(folderKey)}
+              style={{ paddingLeft: `${(level * 16) + 16}px` }}
+              className="w-full flex items-center justify-between py-3.5 pr-4 hover:bg-gray-50 border-b border-gray-100 text-left transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+                  <Folder className="w-4 h-4 text-amber-500 fill-amber-200/50" />
+                </div>
+                <span className="text-gray-700 text-sm font-semibold leading-none">
+                  {subNode.name}
+                </span>
+              </div>
+              <ChevronRight
+                className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${
+                  isFolderExpanded ? "rotate-90" : ""
+                }`}
+              />
+            </button>
+            
+            <AnimatePresence>
+              {isFolderExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="w-full overflow-hidden border-l-2 border-gray-100/50"
+                >
+                  <FolderView
+                    node={subNode}
+                    level={level + 1}
+                    onSelectTemplate={onSelectTemplate}
+                    language={language}
+                    searchActive={searchActive}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        );
+      })}
+
+      {/* Templates */}
+      {templates.map((template) => (
+        <button
+          key={template.id}
+          onClick={() => onSelectTemplate(template)}
+          style={{ paddingLeft: `${(level * 16) + 16}px` }}
+          className="w-full flex items-center gap-3 py-3.5 pr-4 hover:bg-[#9b1c31]/5 text-left border-b border-gray-50 group transition-colors"
+        >
+          {/* Language badge */}
+          <LangBadge lang={template.language as "hi" | "en"} />
+
+          {/* Template name */}
+          <span className="flex-1 text-[#1e3a5f] text-sm font-medium group-hover:text-[#9b1c31] transition-colors leading-snug">
+            {template.name}
+          </span>
+
+          <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#9b1c31] flex-shrink-0 transition-colors" />
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps) {
   const court = courts.find(c => c.id === courtId);
@@ -157,39 +262,67 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
     return selected;
   }, [allTemplates, language]);
 
-  // Group displayed templates by category
-  const allCategories = useMemo(() => {
-    const grouped: Record<string, TemplateFile[]> = {};
-    for (const t of displayedTemplates) {
-      if (!grouped[t.description]) grouped[t.description] = [];
-      grouped[t.description].push(t);
-    }
-    return grouped;
-  }, [displayedTemplates]);
-
-  // Search filter
-  const filteredCategories = useMemo(() => {
+  // Search filter at the template level
+  const filteredTemplates = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
-    if (!query) return allCategories;
+    if (!query) return displayedTemplates;
 
-    const result: Record<string, TemplateFile[]> = {};
-    for (const [cat, templates] of Object.entries(allCategories)) {
-      const matched = templates.filter(
-        t =>
-          t.name.toLowerCase().includes(query) ||
-          t.description.toLowerCase().includes(query) ||
-          cat.toLowerCase().includes(query)
-      );
-      if (matched.length > 0) result[cat] = matched;
+    return displayedTemplates.filter(t => {
+      if (t.name.toLowerCase().includes(query)) return true;
+      if (t.category.toLowerCase().includes(query)) return true;
+      if (t.description.toLowerCase().includes(query)) return true;
+      if (t.subPath && t.subPath.some(folder => folder.toLowerCase().includes(query))) return true;
+      return false;
+    });
+  }, [displayedTemplates, searchQuery]);
+
+  // Group filtered templates by recursive category trees
+  const categoryTrees = useMemo(() => {
+    const trees: Record<string, FolderNode> = {};
+
+    for (const t of filteredTemplates) {
+      // Find or create top-level category node
+      const topCatName = CATEGORY_DISPLAY_NAMES[t.category] || t.category;
+      if (!trees[topCatName]) {
+        trees[topCatName] = {
+          name: topCatName,
+          subfolders: {},
+          templates: [],
+        };
+      }
+
+      // Navigate down subPath
+      let currentNode = trees[topCatName];
+      if (t.subPath) {
+        for (const s of t.subPath) {
+          if (!currentNode.subfolders[s]) {
+            currentNode.subfolders[s] = {
+              name: CATEGORY_DISPLAY_NAMES[s] || s,
+              subfolders: {},
+              templates: [],
+            };
+          }
+          currentNode = currentNode.subfolders[s];
+        }
+      }
+      currentNode.templates.push(t);
     }
-    return result;
-  }, [allCategories, searchQuery]);
+    return trees;
+  }, [filteredTemplates]);
 
-  const categoryKeys = Object.keys(filteredCategories);
-  const totalCount = Object.values(filteredCategories).reduce(
-    (acc, arr) => acc + arr.length,
-    0
-  );
+  const categoryKeys = Object.keys(categoryTrees);
+  
+  // Count total templates in all trees
+  const totalCount = useMemo(() => {
+    const countTemplates = (node: FolderNode): number => {
+      let count = node.templates.length;
+      for (const sub of Object.values(node.subfolders)) {
+        count += countTemplates(sub);
+      }
+      return count;
+    };
+    return Object.values(categoryTrees).reduce((acc, node) => acc + countTemplates(node), 0);
+  }, [categoryTrees]);
 
   return (
     <div className="min-h-screen bg-[#f4f6f9]">
@@ -291,13 +424,22 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
         )}
 
         {/* Category accordion */}
-        {categoryKeys.map((category, catIdx) => {
-          const templates = filteredCategories[category];
-          const isExpanded = expandedCategory === category || searchQuery !== "";
+        {categoryKeys.map((categoryName, catIdx) => {
+          const rootNode = categoryTrees[categoryName];
+          const isExpanded = expandedCategory === categoryName || searchQuery !== "";
+
+          const countTemplates = (node: FolderNode): number => {
+            let count = node.templates.length;
+            for (const sub of Object.values(node.subfolders)) {
+              count += countTemplates(sub);
+            }
+            return count;
+          };
+          const totalTemplates = countTemplates(rootNode);
 
           return (
             <motion.div
-              key={category}
+              key={categoryName}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: catIdx * 0.03 }}
@@ -306,7 +448,7 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
               {/* Category header */}
               <button
                 onClick={() =>
-                  setExpandedCategory(isExpanded && !searchQuery ? null : category)
+                  setExpandedCategory(isExpanded && !searchQuery ? null : categoryName)
                 }
                 className="w-full flex items-center justify-between px-4 py-4 hover:bg-gray-50 transition-colors"
               >
@@ -316,10 +458,10 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
                   </div>
                   <div className="text-left">
                     <h2 className="font-bold text-[#1e3a5f] text-sm leading-tight">
-                      {category}
+                      {categoryName}
                     </h2>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      {templates.length} document{templates.length !== 1 ? "s" : ""}
+                      {totalTemplates} document{totalTemplates !== 1 ? "s" : ""}
                     </p>
                   </div>
                 </div>
@@ -330,7 +472,7 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
                 />
               </button>
 
-              {/* Templates list */}
+              {/* Recursive Folder/File View */}
               <AnimatePresence>
                 {isExpanded && (
                   <motion.div
@@ -340,28 +482,12 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
                     transition={{ duration: 0.18 }}
                     className="border-t border-gray-100"
                   >
-                    <div className="divide-y divide-gray-50">
-                      {templates.map((template, idx) => (
-                        <motion.button
-                          key={template.id}
-                          initial={{ opacity: 0, x: -8 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: idx * 0.025 }}
-                          onClick={() => handleTemplateClick(template)}
-                          className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-[#9b1c31]/5 transition-colors text-left group"
-                        >
-                          {/* Language badge */}
-                          <LangBadge lang={template.language as "hi" | "en"} />
-
-                          {/* Template name */}
-                          <span className="flex-1 text-[#1e3a5f] text-sm font-medium group-hover:text-[#9b1c31] transition-colors leading-snug">
-                            {template.name}
-                          </span>
-
-                          <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#9b1c31] flex-shrink-0 transition-colors" />
-                        </motion.button>
-                      ))}
-                    </div>
+                    <FolderView
+                      node={rootNode}
+                      onSelectTemplate={handleTemplateClick}
+                      language={language}
+                      searchActive={searchQuery !== ""}
+                    />
                   </motion.div>
                 )}
               </AnimatePresence>

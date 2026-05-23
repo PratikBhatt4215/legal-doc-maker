@@ -29,6 +29,7 @@ export interface TemplateFile {
   language: Language;   // 'hi' or 'en'
   courtId: string;      // e.g. 'district-court'
   category: string;     // e.g. 'CRIMINAL', 'CIVIL'
+  subPath: string[];    // nested folders
 }
 
 // ── Folder → Court ID Mapping ─────────────────────────────────────
@@ -121,15 +122,22 @@ function buildRegistry(): TemplateFile[] {
     const courtId = FOLDER_TO_COURT_ID[courtFolder];
     if (!courtId) continue; // unknown court folder — skip
 
-    // Category is everything between court folder and filename
+    // Category is the top-level directory under court folder
     const categoryParts = parts.slice(1, parts.length - 1);
     const category = categoryParts.length > 0
-      ? categoryParts[categoryParts.length - 1] // innermost folder
+      ? categoryParts[0] // top-level folder
       : 'General';
+
+    const subPath = categoryParts.length > 1
+      ? categoryParts.slice(1)
+      : [];
 
     const displayName = fileNameToDisplayName(filename);
     const language = detectLanguage(filename);
-    const id = slugify(`${courtId}-${category}-${displayName}`);
+    
+    // Include subPath in the slug to prevent folder structure conflicts
+    const subPathSlug = subPath.length > 0 ? `${subPath.join('-')}-` : '';
+    const id = slugify(`${courtId}-${category}-${subPathSlug}${displayName}`);
 
     templates.push({
       id,
@@ -139,6 +147,7 @@ function buildRegistry(): TemplateFile[] {
       language,
       courtId,
       category,
+      subPath,
     });
   }
 

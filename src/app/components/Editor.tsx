@@ -21,6 +21,7 @@ const A4_W = 794;
    Dot/underscore → input fields
    ───────────────────────────────────────────────────────────────── */
 function injectAndWire(container: HTMLElement) {
+  // 1. Process inline text fields (dots / underscores)
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
   const nodes: Text[] = [];
   let n: Node | null;
@@ -39,6 +40,23 @@ function injectAndWire(container: HTMLElement) {
     parent.replaceChild(frag, textNode);
   });
 
+  // 2. Identify blank table columns (empty td or cell with only dots/underscores)
+  container.querySelectorAll("td").forEach(td => {
+    const rawText = td.textContent || "";
+    const cleanText = rawText.trim().replace(/\u00A0/g, ""); // replace non-breaking spaces
+    
+    // Check if the cell is completely empty or has only dot/underscore patterns
+    if (cleanText === "" || /^[.…_]+$/.test(cleanText)) {
+      td.innerHTML = ""; // clear dots or non-breaking spaces
+      const inp = makeInput(15);
+      inp.style.width = "100%";
+      inp.style.minWidth = "100%";
+      inp.style.boxSizing = "border-box";
+      td.appendChild(inp);
+    }
+  });
+
+  // 3. Setup input event wiring
   container.querySelectorAll<HTMLInputElement>("input[data-field]").forEach(inp => {
     if (inp.value.trim()) inp.classList.add("has-value");
     inp.addEventListener("input", () =>
