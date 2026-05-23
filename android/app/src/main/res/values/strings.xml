@@ -4,4 +4,6 @@
     <string name="title_activity_main">legal doc maker</string>
     <string name="package_name">com.legaldocsmaker.app</string>
     <string name="custom_url_scheme">com.legaldocsmaker.app</string>
+    <string name="no_webview_title">Webview not found</string>
+    <string name="no_webview_text">System WebView is required to run this app. Please install or enable Android System WebView.</string>
 </resources>

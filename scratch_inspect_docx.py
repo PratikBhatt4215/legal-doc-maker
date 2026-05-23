@@ -1,0 +1,25 @@
+import zipfile
+import xml.etree.ElementTree as ET
+import os
+
+docx_path = "/Users/pratikkumar/IdeaProjects/Sharedrepo/legal_doc_maker/src/app/templates/District Court/FAMILY COURT/Muslim Law/mehar ki rashi vasooli hetu civil suite.docx"
+
+if not os.path.exists(docx_path):
+    print("File not found:", docx_path)
+    exit(1)
+
+with zipfile.ZipFile(docx_path) as z:
+    xml_content = z.read("word/document.xml")
+    
+root = ET.fromstring(xml_content)
+namespaces = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+
+# Let's extract paragraphs and print the text of the first few paragraphs
+paragraphs = root.findall('.//w:p', namespaces)
+print(f"Total paragraphs: {len(paragraphs)}")
+
+for idx, p in enumerate(paragraphs[:15]):
+    texts = p.findall('.//w:t', namespaces)
+    p_text = "".join([t.text for t in texts if t.text])
+    if p_text.strip():
+        print(f"P {idx}: {repr(p_text)}")

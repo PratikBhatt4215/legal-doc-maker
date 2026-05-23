@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as docx from "docx-preview";
-import { Download, Loader2, Eye, FileText, X, Printer } from "lucide-react";
+import { Download, Loader2, Eye, FileText, X, Printer, Mic, MicOff } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { storage } from "../../lib/storage";
 import { toast } from "sonner";
@@ -18,86 +18,222 @@ interface EditorProps {
 const A4_W = 794;
 
 /* ─────────────────────────────────────────────────────────────────
-   Dot/underscore → input fields
+   ContentEditable Dynamic Engine
+   Replaces dotted lines with inline contenteditable spans.
+   This guarantees that long text wraps to the next line naturally
+   instead of hiding inside a tiny fixed-width input box.
    ───────────────────────────────────────────────────────────────── */
-function injectAndWire(container: HTMLElement) {
-  // 1. Process inline text fields (dots / underscores)
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
-  const nodes: Text[] = [];
+
+function injectAndWire(container: HTMLElement): void {
+  const dotPattern = /([.…]{4,}|_{4,})/g;
+
+  // 1. Walk the document and find all dotted lines
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (node.parentElement?.isContentEditable || node.parentElement?.closest('.legal-editable-field')) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return dotPattern.test(node.textContent || "")
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_SKIP;
+    }
+  });
+
+  const textNodes: Text[] = [];
   let n: Node | null;
-  while ((n = walker.nextNode())) {
-    if (/[.…]{4,}|_{4,}/.test((n as Text).textContent || "")) nodes.push(n as Text);
-  }
-  nodes.forEach(textNode => {
+  while ((n = walker.nextNode())) textNodes.push(n as Text);
+
+  // 2. Replace the text dots with dynamic editable spans
+  textNodes.forEach(textNode => {
     const parent = textNode.parentNode;
     if (!parent) return;
-    const parts = (textNode.textContent || "").split(/([.…]{4,}|_{4,})/g);
+    const text = textNode.textContent || "";
+    dotPattern.lastIndex = 0;
+    const parts = text.split(/((?:[.…]{4,}|_{4,}))/g);
+    if (parts.length <= 1) return;
+
     const frag = document.createDocumentFragment();
     parts.forEach(part => {
-      if (/[.…]{4,}|_{4,}/.test(part)) frag.appendChild(makeInput(part.length));
-      else if (part) frag.appendChild(document.createTextNode(part));
+      if (/^(?:[.…]{4,}|_{4,})$/.test(part)) {
+        const span = document.createElement("span");
+        span.className = "legal-editable-field is-empty";
+        span.contentEditable = "true";
+        span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        span.dataset.placeholder = part; // CSS ::before uses this to display the dots
+        span.setAttribute("spellcheck", "false");
+
+        // Prevent pasting bold/huge text formats
+        span.addEventListener("paste", e => {
+          e.preventDefault();
+          const pastedText = e.clipboardData?.getData("text/plain") || "";
+          document.execCommand("insertText", false, pastedText);
+        });
+
+        // Dynamic flowing text logic
+        span.addEventListener("input", () => {
+          const currentText = span.textContent?.trim() || "";
+          if (currentText.length > 0) {
+            span.classList.remove("is-empty");
+            span.classList.add("has-value");
+          } else {
+            span.classList.add("is-empty");
+            span.classList.remove("has-value");
+          }
+        });
+
+        frag.appendChild(span);
+      } else if (part) {
+        frag.appendChild(document.createTextNode(part));
+      }
     });
     parent.replaceChild(frag, textNode);
   });
 
-  // 2. Identify blank table columns (empty td or cell with only dots/underscores)
+  // 3. Handle table cells
   container.querySelectorAll("td").forEach(td => {
-    const rawText = td.textContent || "";
-    const cleanText = rawText.trim().replace(/\u00A0/g, ""); // replace non-breaking spaces
-    
-    // Check if the cell is completely empty or has only dot/underscore patterns
+    const cleanText = (td.textContent || "").trim().replace(/\u00A0/g, "");
     if (cleanText === "" || /^[.…_]+$/.test(cleanText)) {
-      td.innerHTML = ""; // clear dots or non-breaking spaces
-      const inp = makeInput(15);
-      inp.style.width = "100%";
-      inp.style.minWidth = "100%";
-      inp.style.boxSizing = "border-box";
-      td.appendChild(inp);
+      td.innerHTML = "";
+      const span = document.createElement("span");
+      span.className = "legal-editable-field is-empty td-field";
+      span.contentEditable = "true";
+      span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+      span.setAttribute("spellcheck", "false");
+
+      span.addEventListener("input", () => {
+        const currentText = span.textContent?.trim() || "";
+        if (currentText.length > 0) {
+          span.classList.remove("is-empty");
+          span.classList.add("has-value");
+        } else {
+          span.classList.add("is-empty");
+          span.classList.remove("has-value");
+        }
+      });
+      td.appendChild(span);
     }
   });
-
-  // 3. Setup input event wiring
-  container.querySelectorAll<HTMLInputElement>("input[data-field]").forEach(inp => {
-    if (inp.value.trim()) inp.classList.add("has-value");
-    inp.addEventListener("input", () =>
-      inp.value.trim() ? inp.classList.add("has-value") : inp.classList.remove("has-value")
-    );
-    inp.addEventListener("paste", e => e.stopPropagation());
-    inp.addEventListener("copy",  e => e.preventDefault());
-    inp.addEventListener("cut",   e => e.preventDefault());
-  });
 }
 
-function makeInput(dotLen: number): HTMLInputElement {
-  const inp = document.createElement("input");
-  inp.type = "text";
-  inp.setAttribute("data-field", `f_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`);
-  inp.placeholder = " ";
-  inp.style.width    = `calc(${dotLen * 0.45}ch + 10px)`;
-  inp.style.minWidth = "60px";
-  inp.addEventListener("input", () =>
-    inp.value.trim() ? inp.classList.add("has-value") : inp.classList.remove("has-value")
-  );
-  return inp;
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   Lock document — no select / copy / context menu
-   ───────────────────────────────────────────────────────────────── */
 function lockDocument(container: HTMLElement) {
   container.addEventListener("contextmenu", e => e.preventDefault());
   container.addEventListener("selectstart", e => {
-    if ((e.target as HTMLElement).tagName !== "INPUT") e.preventDefault();
+    if (!(e.target as HTMLElement).isContentEditable) e.preventDefault();
   });
   container.addEventListener("copy", e => {
-    if ((e.target as HTMLElement).tagName !== "INPUT") e.preventDefault();
+    if (!(e.target as HTMLElement).isContentEditable) e.preventDefault();
   });
-  (container.style as any).webkitUserSelect  = "none";
-  (container.style as any).userSelect         = "none";
-  (container.style as any).webkitTouchCallout = "none";
 }
 
-/* ── Paper modal ──────────────────────────────────────────────────── */
+function breakPagesDynamically(container: HTMLElement) {
+  const sections = Array.from(container.querySelectorAll(".docx-wrapper > section.docx, section.docx")) as HTMLElement[];
+  for (let i = 0; i < sections.length; i++) {
+    paginateSection(sections[i]);
+  }
+}
+
+function paginateSection(section: HTMLElement) {
+  const article = section.querySelector("article");
+  if (!article) return;
+
+  const pageRect = section.getBoundingClientRect();
+  const maxBottom = pageRect.top + 1070; // Adjusted for proper table fit
+
+  const children = Array.from(article.children) as HTMLElement[];
+  let splitIndex = -1;
+  let tableSplitRowIndex = -1;
+  let splitTableElement: HTMLTableElement | null = null;
+  let hasKeptSomething = false;
+
+  for (let j = 0; j < children.length; j++) {
+    const child = children[j];
+    const rect = child.getBoundingClientRect();
+
+    if (rect.height === 0) continue;
+
+    if (rect.bottom > maxBottom) {
+      if (!hasKeptSomething) {
+        hasKeptSomething = true;
+        continue;
+      }
+
+      if (child.tagName === "TABLE") {
+        const table = child as HTMLTableElement;
+        const rows = Array.from(table.querySelectorAll("tr")) as HTMLTableRowElement[];
+        let keptRow = false;
+
+        for (let r = 0; r < rows.length; r++) {
+          const row = rows[r];
+          const rowRect = row.getBoundingClientRect();
+          if (rowRect.bottom > maxBottom) {
+            if (!keptRow) {
+              keptRow = true;
+              continue;
+            }
+            splitIndex = j;
+            tableSplitRowIndex = r;
+            splitTableElement = table;
+            break;
+          } else {
+            keptRow = true;
+          }
+        }
+
+        if (splitIndex !== -1) break;
+      }
+
+      splitIndex = j;
+      break;
+    } else {
+      hasKeptSomething = true;
+    }
+  }
+
+  if (splitIndex !== -1) {
+    const newSection = section.cloneNode(true) as HTMLElement;
+    const newArticle = newSection.querySelector("article");
+    if (newArticle) {
+      newArticle.innerHTML = "";
+    }
+
+    section.parentNode?.insertBefore(newSection, section.nextSibling);
+
+    const overflowingElements: HTMLElement[] = [];
+
+    if (splitTableElement && tableSplitRowIndex !== -1) {
+      const table = splitTableElement;
+      const rows = Array.from(table.querySelectorAll("tr")) as HTMLTableRowElement[];
+
+      const newTable = table.cloneNode(false) as HTMLTableElement;
+      const originalTbody = table.querySelector("tbody");
+      const newTbody = originalTbody ? (originalTbody.cloneNode(false) as HTMLElement) : newTable;
+      if (originalTbody) {
+        newTable.appendChild(newTbody);
+      }
+
+      for (let r = tableSplitRowIndex; r < rows.length; r++) {
+        newTbody.appendChild(rows[r]);
+      }
+
+      overflowingElements.push(newTable);
+
+      for (let j = splitIndex + 1; j < children.length; j++) {
+        overflowingElements.push(children[j]);
+      }
+    } else {
+      for (let j = splitIndex; j < children.length; j++) {
+        overflowingElements.push(children[j]);
+      }
+    }
+
+    if (newArticle) {
+      overflowingElements.forEach(el => newArticle.appendChild(el));
+    }
+
+    paginateSection(newSection);
+  }
+}
+
 function PaperSizeModal({ onSelect, onCancel }: { onSelect: (s: PaperSize) => void; onCancel: () => void }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -127,11 +263,6 @@ function PaperSizeModal({ onSelect, onCancel }: { onSelect: (s: PaperSize) => vo
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   Custom touch-based pan & pinch-zoom hook
-   Works 100% reliably in Android WebView / Capacitor using raw
-   touchstart / touchmove / touchend — NOT pointer events.
-   ───────────────────────────────────────────────────────────────── */
 function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRef: React.RefObject<HTMLDivElement>) {
   const stateRef = useRef({ x: 0, y: 0, scale: 1 });
   const MIN_SCALE = 0.25;
@@ -151,23 +282,20 @@ function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRe
     if (!viewport || !content) return;
 
     let touch1 = { x: 0, y: 0 };
-    let touch2 = { x: 0, y: 0 };
     let isPinching = false;
     let isPanning = false;
     let lastDist = 0;
     let lastMidX = 0;
     let lastMidY = 0;
 
-    // Velocity tracking for inertia
     let velX = 0, velY = 0;
     let lastTime = 0;
-    let prevX = 0, prevY = 0;
     let rafId = 0;
 
-    function dist(t1: {x:number,y:number}, t2: {x:number,y:number}) {
+    function dist(t1: { x: number, y: number }, t2: { x: number, y: number }) {
       return Math.hypot(t2.x - t1.x, t2.y - t1.y);
     }
-    function mid(t1: {x:number,y:number}, t2: {x:number,y:number}) {
+    function mid(t1: { x: number, y: number }, t2: { x: number, y: number }) {
       return { x: (t1.x + t2.x) / 2, y: (t1.y + t2.y) / 2 };
     }
 
@@ -193,8 +321,6 @@ function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRe
       if (e.touches.length === 1) {
         const t = e.touches[0];
         touch1 = { x: t.clientX, y: t.clientY };
-        prevX = stateRef.current.x;
-        prevY = stateRef.current.y;
         lastTime = Date.now();
         isPanning = true;
         isPinching = false;
@@ -211,9 +337,8 @@ function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRe
     }
 
     function onTouchMove(e: TouchEvent) {
-      e.preventDefault();
-
       if (isPinching && e.touches.length === 2) {
+        e.preventDefault();
         const t1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
         const t2 = { x: e.touches[1].clientX, y: e.touches[1].clientY };
         const newDist = dist(t1, t2);
@@ -223,7 +348,6 @@ function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRe
         const scaleFactor = newDist / lastDist;
         let newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * scaleFactor));
 
-        // Zoom towards the midpoint between fingers
         const rect = viewport.getBoundingClientRect();
         const pinchX = m.x - rect.left;
         const pinchY = m.y - rect.top;
@@ -236,6 +360,12 @@ function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRe
         lastMidY = m.y;
 
       } else if (isPanning && e.touches.length === 1) {
+        const activeElement = document.activeElement as HTMLElement;
+        if (activeElement && activeElement.isContentEditable) {
+          return;
+        }
+
+        e.preventDefault();
         const t = e.touches[0];
         const now = Date.now();
         const dt = now - lastTime;
@@ -258,14 +388,12 @@ function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRe
     function onTouchEnd(e: TouchEvent) {
       if (e.touches.length === 0) {
         if (isPanning) {
-          // Inertia: glide to a stop
           let { x, y, scale } = stateRef.current;
           const friction = 0.92;
           function inertia() {
             velX *= friction;
             velY *= friction;
             if (Math.abs(velX) < 0.3 && Math.abs(velY) < 0.3) {
-              // Snap to bounds
               const clamped = clampPosition(x, y, scale);
               if (clamped.x !== x || clamped.y !== y) {
                 applyTransform(clamped.x, clamped.y, scale, true);
@@ -281,7 +409,6 @@ function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRe
         }
 
         if (isPinching) {
-          // Snap scale bounds after pinch
           const { x, y, scale } = stateRef.current;
           const clamped = clampPosition(x, y, scale);
           applyTransform(clamped.x, clamped.y, scale, true);
@@ -290,7 +417,6 @@ function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRe
         isPanning = false;
         isPinching = false;
       } else if (e.touches.length === 1) {
-        // One finger lifted during pinch → switch to pan
         isPinching = false;
         isPanning = true;
         touch1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -299,46 +425,231 @@ function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRe
     }
 
     viewport.addEventListener("touchstart", onTouchStart, { passive: false });
-    viewport.addEventListener("touchmove",  onTouchMove,  { passive: false });
-    viewport.addEventListener("touchend",   onTouchEnd,   { passive: true });
-    viewport.addEventListener("touchcancel",onTouchEnd,   { passive: true });
+    viewport.addEventListener("touchmove", onTouchMove, { passive: false });
+    viewport.addEventListener("touchend", onTouchEnd, { passive: true });
+    viewport.addEventListener("touchcancel", onTouchEnd, { passive: true });
 
     return () => {
       cancelAnimationFrame(rafId);
       viewport.removeEventListener("touchstart", onTouchStart);
-      viewport.removeEventListener("touchmove",  onTouchMove);
-      viewport.removeEventListener("touchend",   onTouchEnd);
-      viewport.removeEventListener("touchcancel",onTouchEnd);
+      viewport.removeEventListener("touchmove", onTouchMove);
+      viewport.removeEventListener("touchend", onTouchEnd);
+      viewport.removeEventListener("touchcancel", onTouchEnd);
     };
   }, [viewportRef, contentRef, applyTransform]);
 
   return { applyTransform, stateRef };
 }
 
-/* ── Main Editor ─────────────────────────────────────────────────── */
 export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
-  const [isLoading,      setIsLoading]      = useState(true);
-  const [pageCount,      setPageCount]      = useState(0);
-  const [previewHtml,    setPreviewHtml]    = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [pageCount, setPageCount] = useState(0);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [showPaperModal, setShowPaperModal] = useState(false);
-  const [exportingPDF,   setExportingPDF]   = useState(false);
+  const [exportingPDF, setExportingPDF] = useState(false);
+
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  const dragElRef = useRef<HTMLElement | null>(null);
+  const dragTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragStartRef = useRef({ screenX: 0, screenY: 0, origTop: 0, origLeft: 0 });
 
   const viewportRef = useRef<HTMLDivElement>(null);
-  const contentRef  = useRef<HTMLDivElement>(null);
-  const docxRef     = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const docxRef = useRef<HTMLDivElement>(null);
 
   const template = getTemplateById(formId);
 
   const { applyTransform, stateRef } = useTouchPanZoom(viewportRef, contentRef);
 
-  /* ── Set initial scale to fit A4 width on screen ── */
+  useEffect(() => {
+    const container = docxRef.current;
+    if (!container || isLoading) return;
+
+    const setupTimer = setTimeout(() => {
+      const draggables = container.querySelectorAll<HTMLElement>(
+        ".docx-wrapper > section.docx article > p, " +
+        ".docx-wrapper > section.docx article > table, " +
+        ".docx-wrapper > section.docx article > div"
+      );
+
+      draggables.forEach(el => {
+        if (!el.style.position || el.style.position === "static") {
+          el.style.position = "relative";
+          el.style.top = "0px";
+          el.style.left = "0px";
+        }
+      });
+    }, 600);
+
+    return () => clearTimeout(setupTimer);
+  }, [isLoading, pageCount]);
+
+  useEffect(() => {
+    const container = docxRef.current;
+    if (!container) return;
+
+    function findDraggableParent(target: HTMLElement): HTMLElement | null {
+      if (target.isContentEditable) return null;
+
+      let el: HTMLElement | null = target;
+      while (el && el !== container) {
+        const parent = el.parentElement;
+        if (parent && parent.tagName === "ARTICLE") {
+          return el;
+        }
+        el = parent;
+      }
+      return null;
+    }
+
+    function onPointerDown(e: TouchEvent | MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (target.isContentEditable) return;
+
+      const draggable = findDraggableParent(target);
+      if (!draggable) return;
+
+      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+
+      if (dragTimerRef.current) clearTimeout(dragTimerRef.current);
+
+      dragStartRef.current = {
+        screenX: clientX,
+        screenY: clientY,
+        origTop: parseFloat(draggable.style.top) || 0,
+        origLeft: parseFloat(draggable.style.left) || 0,
+      };
+
+      dragTimerRef.current = setTimeout(() => {
+        dragElRef.current = draggable;
+        draggable.style.outline = "2px dashed #1e3a5f";
+        draggable.style.opacity = "0.85";
+        draggable.style.zIndex = "100";
+        draggable.style.transition = "none";
+      }, 400);
+    }
+
+    function onPointerMove(e: TouchEvent | MouseEvent) {
+      const clientX = "touches" in e ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
+      const clientY = "touches" in e ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
+
+      if (!dragElRef.current) {
+        if (dragTimerRef.current) {
+          const dx = clientX - dragStartRef.current.screenX;
+          const dy = clientY - dragStartRef.current.screenY;
+          if (Math.hypot(dx, dy) > 8) {
+            clearTimeout(dragTimerRef.current);
+            dragTimerRef.current = null;
+          }
+        }
+        return;
+      }
+      if (e.cancelable) e.preventDefault();
+
+      const { scale } = stateRef.current;
+      const safeScale = scale > 0 ? scale : 1;
+      const dx = (clientX - dragStartRef.current.screenX) / safeScale;
+      const dy = (clientY - dragStartRef.current.screenY) / safeScale;
+
+      const newLeft = Math.round((dragStartRef.current.origLeft + dx) / 2) * 2;
+      const newTop = Math.round((dragStartRef.current.origTop + dy) / 2) * 2;
+
+      dragElRef.current.style.left = `${newLeft}px`;
+      dragElRef.current.style.top = `${newTop}px`;
+    }
+
+    function onPointerUp() {
+      if (dragTimerRef.current) {
+        clearTimeout(dragTimerRef.current);
+        dragTimerRef.current = null;
+      }
+
+      if (dragElRef.current) {
+        dragElRef.current.style.outline = "";
+        dragElRef.current.style.opacity = "";
+        dragElRef.current.style.zIndex = "";
+        dragElRef.current.style.transition = "";
+        dragElRef.current = null;
+      }
+    }
+
+    container.addEventListener("touchstart", onPointerDown, { passive: true });
+    container.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("touchmove", onPointerMove, { passive: false });
+    window.addEventListener("mousemove", onPointerMove);
+    window.addEventListener("touchend", onPointerUp);
+    window.addEventListener("touchcancel", onPointerUp);
+    window.addEventListener("mouseup", onPointerUp);
+
+    return () => {
+      container.removeEventListener("touchstart", onPointerDown);
+      container.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("touchmove", onPointerMove);
+      window.removeEventListener("mousemove", onPointerMove);
+      window.removeEventListener("touchend", onPointerUp);
+      window.removeEventListener("touchcancel", onPointerUp);
+      window.removeEventListener("mouseup", onPointerUp);
+    };
+  }, [isLoading, pageCount, stateRef]);
+
+  const toggleVoiceTyping = useCallback(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error("Voice typing not supported on this browser.");
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) recognitionRef.current.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "hi-IN";
+    recognition.continuous = true;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      toast.success("Listening for Hindi dictation...");
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((res: any) => res[0].transcript)
+        .join("");
+
+      const activeEl = document.activeElement as HTMLElement;
+
+      if (activeEl && activeEl.classList.contains("legal-editable-field")) {
+        const span = activeEl as HTMLSpanElement;
+        const currentText = span.textContent?.trim() || "";
+        span.textContent = (currentText + " " + transcript).trim();
+        span.classList.remove("is-empty");
+        span.classList.add("has-value");
+        span.dispatchEvent(new Event("input", { bubbles: true }));
+      } else {
+        toast.info("Tap a dotted line field first, then dictate.");
+      }
+    };
+
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, [isListening]);
+
   useEffect(() => {
     const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
     const x = (window.innerWidth - A4_W * scale) / 2;
     applyTransform(x, 0, scale);
   }, [applyTransform]);
 
-  /* ── Load docx ── */
   useEffect(() => {
     if (!docxRef.current || !template?.filePath) { setIsLoading(false); return; }
     setIsLoading(true);
@@ -352,41 +663,59 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
       }))
       .then(() => {
         if (!docxRef.current) return;
-        injectAndWire(docxRef.current);
         lockDocument(docxRef.current);
-        
-        // Center and set pageCount after rendering and pagination settle
-        setTimeout(() => {
+
+        const doInject = () => {
           if (docxRef.current) {
-            setPageCount(docxRef.current.querySelectorAll(".docx-wrapper > section, .docx").length || 1);
+            injectAndWire(docxRef.current);
+            applyTransform(0, 0, 1);
+            breakPagesDynamically(docxRef.current);
+
+            const pc = docxRef.current.querySelectorAll(".docx-wrapper > section.docx, section.docx").length || 1;
+            setPageCount(pc);
+
+            const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
+            const x = (window.innerWidth - A4_W * scale) / 2;
+            applyTransform(x, 0, scale);
           }
-          const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
-          const x = (window.innerWidth - A4_W * scale) / 2;
-          applyTransform(x, 0, scale);
-        }, 400);
+        };
+
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(() => setTimeout(doInject, 200));
+        } else {
+          setTimeout(doInject, 400);
+        }
       })
       .catch(e => { console.error(e); toast.error("Could not load template."); })
       .finally(() => setIsLoading(false));
   }, [formId, template, applyTransform]);
 
-  /* ── Preview ── */
   const handlePreview = useCallback(() => {
     if (!docxRef.current) return;
+    // Because we are using contenteditable spans now, the preview is already perfect! 
+    // We just clone the HTML natively.
     const clone = docxRef.current.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll<HTMLInputElement>("input[data-field]").forEach(ci => {
-      const live = docxRef.current!.querySelector<HTMLInputElement>(`input[data-field="${ci.dataset.field}"]`);
-      const val = live?.value || ci.value || "";
-      const span = document.createElement("span");
-      span.textContent = val || "\u00A0";
-      span.style.cssText = `display:inline-block;width:${ci.style.width||"auto"};min-width:60px;border-bottom:${val?"2px solid transparent":"1.5px dotted #777"};padding:0 4px;font-size:inherit;font-weight:400;color:#111;vertical-align:baseline;`;
-      ci.parentNode?.replaceChild(span, ci);
-    });
     setPreviewHtml(clone.innerHTML);
   }, []);
 
   const handleSave = useCallback(() => {
     if (docxRef.current) storage.saveDraft(formId, docxRef.current.innerHTML);
   }, [formId]);
+
+  const handleResetLayout = useCallback(() => {
+    const container = docxRef.current;
+    if (!container) return;
+    const draggables = container.querySelectorAll<HTMLElement>(
+      ".docx-wrapper > section.docx article > p, " +
+      ".docx-wrapper > section.docx article > table, " +
+      ".docx-wrapper > section.docx article > div"
+    );
+    draggables.forEach(el => {
+      el.style.top = "0px";
+      el.style.left = "0px";
+    });
+    toast.success("Document layout reset to original!");
+  }, []);
 
   const handlePaperSelect = async (size: PaperSize) => {
     setShowPaperModal(false);
@@ -397,17 +726,16 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
       toast.info(`Generating ${size.toUpperCase()} PDF…`);
       const { x: ox, y: oy, scale: os } = stateRef.current;
 
-      // Reset to 1:1 scale for pixel-perfect PDF capture
       applyTransform(0, 0, 1);
       await new Promise(r => setTimeout(r, 200));
 
       try {
         await generatePDF({
           elementId: "docx-print-target",
-          filename:  `${template?.name || "legal-document"}-${Date.now()}.pdf`,
+          filename: `${template?.name || "legal-document"}-${Date.now()}.pdf`,
           paperSize: size,
           onSuccess: () => toast.success("PDF downloaded!"),
-          onError:   () => toast.error("PDF failed. Try again."),
+          onError: () => toast.error("PDF failed. Try again."),
         });
       } catch (err) {
         console.error("PDF generation failed:", err);
@@ -426,7 +754,6 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
     }
   };
 
-  // Preview scale: fit A4 width to screen
   const previewScale = Math.min(1, (window.innerWidth - 16) / A4_W);
 
   return (
@@ -438,13 +765,26 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
         onBack={onBack}
       />
 
-      {/* Toolbar */}
       <div style={{ background: "white", borderBottom: "1px solid #e2e8f0", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px" }}>
           <span style={{ fontSize: 11, color: "#94a3b8" }}>
             {pageCount} page{pageCount !== 1 ? "s" : ""}
           </span>
           <div style={{ flex: 1 }} />
+          <button
+            onClick={toggleVoiceTyping}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              background: isListening ? "#dc2626" : "#f8fafc",
+              color: isListening ? "white" : "#334155",
+              border: "1px solid", borderColor: isListening ? "#dc2626" : "#cbd5e1",
+              borderRadius: 9, padding: "8px 14px", fontWeight: 600, fontSize: 13,
+              cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.15s",
+            }}
+          >
+            {isListening ? <MicOff size={15} /> : <Mic size={15} />}
+            {isListening ? "Listening..." : "Dictate"}
+          </button>
           <button onClick={handlePreview}
             style={{ display: "flex", alignItems: "center", gap: 6, background: "#f8fafc", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 9, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
             <Eye size={15} /> Preview
@@ -457,19 +797,13 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
         </div>
       </div>
 
-      {/* Pan & Zoom Viewport — raw touch events, works 100% in Capacitor */}
       <div
         ref={viewportRef}
         style={{
-          flex: 1,
-          overflow: "hidden",
-          background: "#cbd5e1",
-          position: "relative",
-          touchAction: "none",   // Let our JS handle ALL touch gestures
-          userSelect: "none",
+          flex: 1, overflow: "hidden", background: "#cbd5e1",
+          position: "relative", touchAction: "none", userSelect: "none",
         }}
       >
-        {/* Loading overlay */}
         {isLoading && (
           <div style={{ position: "absolute", inset: 0, zIndex: 10, background: "#cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
             <Loader2 className="animate-spin text-slate-500" size={32} />
@@ -477,30 +811,64 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
           </div>
         )}
 
-        {/* Transformable content — origin top-left for correct pinch math */}
         <div
           ref={contentRef}
           style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            transformOrigin: "0 0",
-            willChange: "transform",
-            width: `${A4_W}px`,
-            padding: "24px 0 40px",
+            position: "absolute", top: 0, left: 0,
+            transformOrigin: "0 0", willChange: "transform",
+            width: `${A4_W}px`, padding: "24px 0 40px",
           }}
         >
-          <div id="docx-print-target" ref={docxRef} className="legal-doc-container"
+          <div
+            id="docx-print-target"
+            ref={docxRef}
+            className="legal-doc-container"
             style={{
               visibility: isLoading ? "hidden" : "visible",
               WebkitUserSelect: "none",
               userSelect: "none",
+              position: "relative",
             } as React.CSSProperties}
           />
         </div>
+
+        <div
+          style={{
+            position: "absolute",
+            bottom: 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 40,
+          }}
+        >
+          <button
+            onClick={handleResetLayout}
+            style={{
+              background: "rgba(15, 23, 42, 0.85)",
+              backdropFilter: "blur(8px)",
+              color: "white",
+              border: "1px solid rgba(255, 255, 255, 0.15)",
+              borderRadius: "9999px",
+              padding: "10px 20px",
+              fontWeight: 600,
+              fontSize: "13px",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3)",
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+            }}
+            onMouseDown={(e) => e.currentTarget.style.transform = "scale(0.95)"}
+            onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
+            onTouchStart={(e) => e.currentTarget.style.transform = "scale(0.95)"}
+            onTouchEnd={(e) => e.currentTarget.style.transform = "scale(1)"}
+          >
+            Reset Layout
+          </button>
+        </div>
       </div>
 
-      {/* Preview modal — correctly scaled to fit screen */}
       {previewHtml && (
         <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.85)", display: "flex", flexDirection: "column" }}>
           <div style={{ background: "white", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
@@ -510,14 +878,10 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
             </div>
             <button onClick={() => setPreviewHtml(null)} style={{ background: "#e2e8f0", border: "none", padding: "8px 16px", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Close</button>
           </div>
-          {/* Scroll container */}
           <div style={{ flex: 1, overflowY: "auto", background: "#cbd5e1" }}>
-            {/* Scale wrapper: shrinks A4 to fit phone width, origin top-center */}
             <div style={{
-              width: `${A4_W}px`,
-              transformOrigin: "top left",
+              width: `${A4_W}px`, transformOrigin: "top left",
               transform: `scale(${previewScale})`,
-              // Collapse the extra whitespace caused by scaling down
               marginBottom: `-${A4_W * (1 - previewScale)}px`,
             }}>
               <div className="legal-doc-container" dangerouslySetInnerHTML={{ __html: previewHtml }} />

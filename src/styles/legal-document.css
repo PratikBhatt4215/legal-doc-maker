@@ -1,230 +1,196 @@
-/**
- * legal-document.css
- * Styles mammoth (.docx → HTML) output to match original Word legal document.
- * Font: Nirmala UI (mandatory)
- *
- * CRITICAL RULE: Never set `text-align` in any .legal-doc rule.
- * Mammoth preserves Word's paragraph alignment as inline style="text-align:..."
- * — those inline styles must win. Any CSS text-align here would override them.
- */
+/* ==========================================================================
+   legal-document.css
+   Clean WYSIWYG Print Layout (Dynamic ContentEditable Edition)
+   ========================================================================== */
 
-/* ── docx-preview wrapper overrides ── */
+/* ── Grey Background & Page Gaps (MS Word Print Layout) ── */
 .docx-wrapper {
-  background: transparent !important;
-  padding: 0 !important;
+  background-color: #e2e8f0 !important;
+  padding: 32px 0 !important;
   display: flex !important;
   flex-direction: column !important;
   align-items: center !important;
+  gap: 24px !important;
+  width: 100% !important;
 }
 
-.docx-wrapper > section.docx {
+/* ── Individual Pages ── */
+.docx-wrapper>section.docx {
   width: 794px !important;
-  min-height: 1123px !important; /* enforces A4 height, but allows slight overflow growth to prevent half-visible lines */
+  /* Strict A4 Width */
+  min-height: 1123px !important;
+  /* Strict A4 Height */
   box-sizing: border-box !important;
-  padding: 120px 96px 96px 120px !important; /* spacious top-left-right-bottom legal margins */
-  margin: 0 auto 32px auto !important;
+  margin: 0 !important;
   background: #ffffff !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08) !important;
-  border-radius: 4px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 0 1px rgba(0, 0, 0, 0.1) !important;
   position: relative !important;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* ── Base ── */
-@font-face {
-  font-family: 'Nirmala UI';
-  src: url('../assets/fonts/Nirmala.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'Nirmala UI';
-  src: url('../assets/fonts/NirmalaB.ttf') format('truetype');
-  font-weight: bold;
-  font-style: normal;
-}
-
+/* ── Typography (Strictly Native) ── */
 .legal-doc,
 .legal-doc *,
 .legal-doc-container,
 .legal-doc-container * {
-  font-family: 'Nirmala UI' !important;
+  font-family: 'Nirmala UI', sans-serif !important;
 }
 
 .legal-doc,
 .legal-doc-container {
-  font-size: 11.5pt;
-  line-height: 1.35 !important; /* perfect spacious spacing, highly readable */
+  font-size: 11.2pt !important;
+  /* Perfectly matched to MS Word */
   color: #111;
-  word-break: normal;
-  overflow-wrap: break-word;
-  hyphens: none;
+  word-wrap: break-word !important;
+  /* Ultra-tight line spacing to match standard legal documents */
+  line-height: 1.15 !important;
 }
 
-/* ── Paragraphs ──
-   IMPORTANT: Do NOT set text-align here.
-   Added white-space: pre-wrap so that spaces and tabs from mammoth are preserved.
-   This is critical for alignment in documents that use tabs for layout. */
-.legal-doc p {
-  margin: 0 0 4px 0; /* clean paragraph gap spacing */
-  padding: 0;
-  line-height: 1.35 !important;
-  word-break: break-word;
-  white-space: pre-wrap;
-  tab-size: 48px;
+.legal-doc p,
+.legal-doc-container p,
+.docx-wrapper>section.docx article p {
+  white-space: pre-wrap !important;
+  /* Minimal gap between paragraphs */
+  margin-bottom: 2px !important;
+  line-height: 1.15 !important;
 }
 
-/* Alignment classes added via mammoth styleMap */
-.legal-doc p.align-center { text-align: center !important; }
-.legal-doc p.align-right { text-align: right !important; }
-.legal-doc p.align-justify { text-align: justify !important; }
+/* Alignments */
+.legal-doc p.align-center,
+.legal-doc-container p.align-center {
+  text-align: center !important;
+}
 
-/* ── Headings ── */
+.legal-doc p.align-right,
+.legal-doc-container p.align-right {
+  text-align: right !important;
+}
+
+.legal-doc p.align-justify,
+.legal-doc-container p.align-justify {
+  text-align: justify !important;
+}
+
+/* Headings */
 .legal-doc h1,
 .legal-doc h2,
-.legal-doc h3 {
-  font-weight: bold;
-  text-decoration: underline;
-  font-size: 11.5pt;
-  margin: 0.6em 0 0.3em;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  /* alignment comes from mammoth inline style */
+.legal-doc h3,
+.legal-doc-container h1,
+.legal-doc-container h2,
+.legal-doc-container h3,
+.docx-wrapper>section.docx article h1,
+.docx-wrapper>section.docx article h2,
+.docx-wrapper>section.docx article h3 {
+  font-weight: bold !important;
+  text-decoration: underline !important;
+  font-size: 12pt !important;
+  margin-top: 18px !important;
+  margin-bottom: 8px !important;
 }
 
-/* ── Bold / underline ── */
-.legal-doc strong, .legal-doc b { font-weight: 700; }
-.legal-doc u { text-underline-offset: 3px; }
+.legal-doc strong,
+.legal-doc b,
+.legal-doc-container strong,
+.legal-doc-container b {
+  font-weight: 700;
+}
 
-/* ── Lists ── */
-.legal-doc ol, .legal-doc ul { padding-left: 1.5em; margin: 0.2em 0; }
-.legal-doc li { margin: 0.15em 0; line-height: 1.35 !important; white-space: pre-wrap; tab-size: 48px; }
+.legal-doc u,
+.legal-doc-container u {
+  text-underline-offset: 3px;
+}
 
-/* ── Tables (mammoth and docx-preview use tables for tab-stop layouts and grid data) ── */
-.legal-doc table {
+/* Tables */
+.legal-doc table,
+.legal-doc-container table {
   width: 100% !important;
   border-collapse: collapse !important;
-  margin: 16px 0 !important;
-  table-layout: auto !important;
-}
-.legal-doc td, .legal-doc th {
-  padding: 4px 6px !important;  /* tight, professional cell margins */
-  vertical-align: middle !important;
-  border: 1px solid #1e293b; /* crisp grid borders as seen in Word document, fallback */
-  font-size: 11.5pt !important;
-  line-height: 1.35 !important;
-  white-space: pre-wrap;
-  tab-size: 48px;
-  /* text-align in td comes from mammoth inline style — do not override */
+  margin-top: 12px !important;
+  margin-bottom: 12px !important;
 }
 
-/* ── Input fields: Dotted underlines for inline text, styled borders for tables ── */
-.legal-doc-container input[data-field] {
-  border: none !important;
-  border-bottom: 2px dotted #666 !important; /* pristine dotted underline */
-  border-radius: 0 !important;
+.legal-doc td,
+.legal-doc th,
+.legal-doc-container td,
+.legal-doc-container th {
+  padding: 4px 6px !important;
+  border: 1px solid #1e293b;
+}
+
+/* ==========================================================================
+   DYNAMIC INLINE EDITABLE FIELDS (Fixes Hidden Text & Alignment Issues)
+   ========================================================================== */
+
+.legal-editable-field {
+  display: inline;
   outline: none !important;
-  background: transparent !important; /* transparent to blend inside text */
-  padding: 1px 4px !important;
-  min-width: 80px;
-  font-family: 'Nirmala UI';
-  font-size: inherit;
-  color: #111 !important;
-  font-weight: 500 !important;
-  box-sizing: border-box !important;
-  margin: 0 2px !important;
-  vertical-align: baseline !important;
   cursor: text;
-  transition: border-bottom 0.12s ease !important;
-  box-shadow: none !important;
+  transition: all 0.2s ease;
+  white-space: pre-wrap;
 }
 
-.legal-doc-container input[data-field]::placeholder {
-  color: transparent !important;   /* hide placeholder */
-}
-
-/* focused inline input field */
-.legal-doc-container input[data-field]:focus {
-  border-bottom: 2px solid #9b1c31 !important; /* solid brand-burgundy bottom border on focus */
-  background: rgba(155, 28, 49, 0.03) !important; /* extremely subtle highlight */
-}
-
-/* input fields located inside table cells: seamlessly blend inside the td */
-.legal-doc td input[data-field],
-.legal-doc-container td input[data-field] {
-  border: none !important;
-  border-bottom: none !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  width: 100% !important;
-  min-width: 100% !important;
-  height: 100% !important;
-  margin: 0 !important;
-  padding: 2px 4px !important;
-  box-shadow: none !important;
-  vertical-align: middle !important;
-}
-.legal-doc td input[data-field]:focus,
-.legal-doc-container td input[data-field]:focus {
-  background: rgba(30, 58, 95, 0.04) !important;
-}
-
-/* ✅ user has typed styles in editor */
-.legal-doc-container input[data-field].has-value {
-  border-bottom: 2px solid transparent !important; /* hide line when filled to look like clean typed text */
-}
-.legal-doc-container input[data-field].has-value:focus {
-  border-bottom: 2px solid #9b1c31 !important;
-}
-
-/* ── Preview Mode & Print Export ── */
-.legal-doc-container.preview-mode input[data-field],
-.preview-mode input[data-field] {
-  border: none !important;
+/* ── 1. Empty State (Shows the dots automatically) ── */
+.legal-editable-field.is-empty {
   border-bottom: 1.5px dotted #666 !important;
-  background: transparent !important;
-  border-radius: 0 !important;
-  padding: 0 4px !important;
-  pointer-events: none !important;
-  box-shadow: none !important;
+  /* Draws the clean line */
 }
-.legal-doc-container.preview-mode input[data-field].has-value,
-.preview-mode input[data-field].has-value {
-  border-bottom: 1.5px solid transparent !important;
+
+/* We use a pseudo-element to hold the dots so they take up exact physical space */
+.legal-editable-field.is-empty::before {
+  content: attr(data-placeholder);
+  color: transparent !important;
+  letter-spacing: -1.2px !important;
+  /* Perfect compression so words fit perfectly */
+}
+
+/* ── 2. Focused State ── */
+.legal-editable-field:focus {
+  border-bottom: 2px solid #9b1c31 !important;
+  background: rgba(155, 28, 49, 0.04) !important;
+}
+
+/* ── 3. Filled State (When user types, dots vanish and text flows naturally) ── */
+.legal-editable-field.has-value {
   color: #111 !important;
+  font-weight: 700 !important;
+  background: #ffffff !important;
+  border-bottom: 2px solid transparent !important;
+  /* Hides the underline */
 }
 
-/* ── Page number shown at the bottom of each A4 page ── */
-.a4-page-number {
-  text-align: center;
-  font-size: 9pt;
-  color: #aaa;
-  font-family: 'Nirmala UI', 'Hind', sans-serif;
-  margin-top: 32px;
-  padding-top: 8px;
-  border-top: 1px solid #e5e7eb;
-  user-select: none;
-  pointer-events: none;
+/* Table Cell Specific Fixes */
+.legal-editable-field.td-field {
+  display: block;
+  width: 100%;
+  min-height: 1.5em;
+  border: none !important;
 }
 
-/* ── Print / PDF export ── */
+/* ── Print / PDF Generation ── */
 @media print {
-  body * { visibility: hidden; }
-  #printable-area, #printable-area * { visibility: visible; }
-  #printable-area {
-    position: fixed; top: 0; left: 0;
-    width: 210mm;
-    padding: 20mm 20mm 20mm 25mm;
-    font-family: 'Nirmala UI', 'Hind', 'Noto Sans Devanagari', sans-serif;
-    font-size: 11.5pt;
-    line-height: 1.85;
-    color: #111;
-    background: white;
-    zoom: 1 !important;
+  body * {
+    visibility: hidden;
   }
-  input[data-field] {
+
+  #printable-area,
+  #printable-area * {
+    visibility: visible;
+  }
+
+  .docx-wrapper {
+    background-color: transparent !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+
+  .docx-wrapper>section.docx {
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+
+  .legal-editable-field {
     border: none !important;
-    border-bottom: 1px dotted #444 !important;
     background: transparent !important;
   }
 }
