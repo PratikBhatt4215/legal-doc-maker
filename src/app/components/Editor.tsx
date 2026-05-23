@@ -17,36 +17,85 @@ interface EditorProps {
 
 const A4_W = 794;
 
-/* ─────────────────────────────────────────────────────────────────
-   Dot/underscore → input fields
-   ───────────────────────────────────────────────────────────────── */
-function injectAndWire(container: HTMLElement) {
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
-  const nodes: Text[] = [];
+function injectAndWire(container: HTMLElement): void {
+  const dotPattern = /([.…]{4,}|_{4,})/g;
+
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (node.parentElement?.isContentEditable || node.parentElement?.closest('.legal-editable-field')) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return dotPattern.test(node.textContent || "")
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_SKIP;
+    }
+  });
+
+  const textNodes: Text[] = [];
   let n: Node | null;
-  while ((n = walker.nextNode())) {
-    if (/[.…]{4,}|_{4,}/.test((n as Text).textContent || "")) nodes.push(n as Text);
-  }
-  nodes.forEach(textNode => {
+  while ((n = walker.nextNode())) textNodes.push(n as Text);
+
+  textNodes.forEach(textNode => {
     const parent = textNode.parentNode;
     if (!parent) return;
     const parts = (textNode.textContent || "").split(/([.…]{4,}|_{4,})/g);
     const frag = document.createDocumentFragment();
     parts.forEach(part => {
-      if (/[.…]{4,}|_{4,}/.test(part)) frag.appendChild(makeInput(part.length));
-      else if (part) frag.appendChild(document.createTextNode(part));
+      if (/^(?:[.…]{4,}|_{4,})$/.test(part)) {
+        const span = document.createElement("span");
+        span.className = "legal-editable-field is-empty";
+        span.contentEditable = "true";
+        span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        span.dataset.placeholder = part;
+        span.setAttribute("spellcheck", "false");
+
+        span.addEventListener("paste", e => {
+          e.preventDefault();
+          const pastedText = e.clipboardData?.getData("text/plain") || "";
+          document.execCommand("insertText", false, pastedText);
+        });
+
+        span.addEventListener("input", () => {
+          const currentText = span.textContent?.trim() || "";
+          if (currentText.length > 0) {
+            span.classList.remove("is-empty");
+            span.classList.add("has-value");
+          } else {
+            span.classList.add("is-empty");
+            span.classList.remove("has-value");
+          }
+        });
+
+        frag.appendChild(span);
+      } else if (part) {
+        frag.appendChild(document.createTextNode(part));
+      }
     });
     parent.replaceChild(frag, textNode);
   });
 
-  container.querySelectorAll<HTMLInputElement>("input[data-field]").forEach(inp => {
-    if (inp.value.trim()) inp.classList.add("has-value");
-    inp.addEventListener("input", () =>
-      inp.value.trim() ? inp.classList.add("has-value") : inp.classList.remove("has-value")
-    );
-    inp.addEventListener("paste", e => e.stopPropagation());
-    inp.addEventListener("copy",  e => e.preventDefault());
-    inp.addEventListener("cut",   e => e.preventDefault());
+  container.querySelectorAll("td").forEach(td => {
+    const cleanText = (td.textContent || "").trim().replace(/\u00A0/g, "");
+    if (cleanText === "" || /^[.…_]+$/.test(cleanText)) {
+      td.innerHTML = "";
+      const span = document.createElement("span");
+      span.className = "legal-editable-field is-empty td-field";
+      span.contentEditable = "true";
+      span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+      span.setAttribute("spellcheck", "false");
+
+      span.addEventListener("input", () => {
+        const currentText = span.textContent?.trim() || "";
+        if (currentText.length > 0) {
+          span.classList.remove("is-empty");
+          span.classList.add("has-value");
+        } else {
+          span.classList.add("is-empty");
+          span.classList.remove("has-value");
+        }
+      });
+      td.appendChild(span);
+    }
   });
 }
 
@@ -79,7 +128,115 @@ function lockDocument(container: HTMLElement) {
   (container.style as any).webkitTouchCallout = "none";
 }
 
-/* ── Paper modal ──────────────────────────────────────────────────── */
+function breakPagesDynamically(container: HTMLElement) {
+  const sections = Array.from(container.querySelectorAll(".docx-wrapper > section.docx, section.docx")) as HTMLElement[];
+  for (let i = 0; i < sections.length; i++) {
+    paginateSection(sections[i]);
+  }
+}
+
+function paginateSection(section: HTMLElement) {
+  const article = section.querySelector("article");
+  if (!article) return;
+
+  const pageRect = section.getBoundingClientRect();
+  const maxBottom = pageRect.top + 1070;
+
+  const children = Array.from(article.children) as HTMLElement[];
+  let splitIndex = -1;
+  let tableSplitRowIndex = -1;
+  let splitTableElement: HTMLTableElement | null = null;
+  let hasKeptSomething = false;
+
+  for (let j = 0; j < children.length; j++) {
+    const child = children[j];
+    const rect = child.getBoundingClientRect();
+
+    if (rect.height === 0) continue;
+
+    if (rect.bottom > maxBottom) {
+      if (!hasKeptSomething) {
+        hasKeptSomething = true;
+        continue;
+      }
+
+      if (child.tagName === "TABLE") {
+        const table = child as HTMLTableElement;
+        const rows = Array.from(table.querySelectorAll("tr")) as HTMLTableRowElement[];
+        let keptRow = false;
+
+        for (let r = 0; r < rows.length; r++) {
+          const row = rows[r];
+          const rowRect = row.getBoundingClientRect();
+          if (rowRect.bottom > maxBottom) {
+            if (!keptRow) {
+              keptRow = true;
+              continue;
+            }
+            splitIndex = j;
+            tableSplitRowIndex = r;
+            splitTableElement = table;
+            break;
+          } else {
+            keptRow = true;
+          }
+        }
+
+        if (splitIndex !== -1) break;
+      }
+
+      splitIndex = j;
+      break;
+    } else {
+      hasKeptSomething = true;
+    }
+  }
+
+  if (splitIndex !== -1) {
+    const newSection = section.cloneNode(true) as HTMLElement;
+    const newArticle = newSection.querySelector("article");
+    if (newArticle) {
+      newArticle.innerHTML = "";
+    }
+
+    section.parentNode?.insertBefore(newSection, section.nextSibling);
+
+    const overflowingElements: HTMLElement[] = [];
+
+    if (splitTableElement && tableSplitRowIndex !== -1) {
+      const table = splitTableElement;
+      const rows = Array.from(table.querySelectorAll("tr")) as HTMLTableRowElement[];
+
+      const newTable = table.cloneNode(false) as HTMLTableElement;
+      const originalTbody = table.querySelector("tbody");
+      const newTbody = originalTbody ? (originalTbody.cloneNode(false) as HTMLElement) : newTable;
+      if (originalTbody) {
+        newTable.appendChild(newTbody);
+      }
+
+      for (let r = tableSplitRowIndex; r < rows.length; r++) {
+        newTbody.appendChild(rows[r]);
+      }
+
+      overflowingElements.push(newTable);
+
+      for (let j = splitIndex + 1; j < children.length; j++) {
+        overflowingElements.push(children[j]);
+      }
+    } else {
+      for (let j = splitIndex; j < children.length; j++) {
+        overflowingElements.push(children[j]);
+      }
+    }
+
+    if (newArticle) {
+      overflowingElements.forEach(el => newArticle.appendChild(el));
+    }
+
+    paginateSection(newSection);
+  }
+}
+
 function PaperSizeModal({ onSelect, onCancel }: { onSelect: (s: PaperSize) => void; onCancel: () => void }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -110,11 +267,13 @@ function PaperSizeModal({ onSelect, onCancel }: { onSelect: (s: PaperSize) => vo
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   Custom touch-based pan & pinch-zoom hook
-   Works 100% reliably in Android WebView / Capacitor using raw
-   touchstart / touchmove / touchend — NOT pointer events.
+   PAN AND ZOOM HOOK (Updated with isDraggingRef check)
    ───────────────────────────────────────────────────────────────── */
-function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRef: React.RefObject<HTMLDivElement>) {
+function useTouchPanZoom(
+  viewportRef: React.RefObject<HTMLDivElement>,
+  contentRef: React.RefObject<HTMLDivElement>,
+  isDraggingRef: React.MutableRefObject<boolean> // 🚨 NEW PARAMETER
+) {
   const stateRef = useRef({ x: 0, y: 0, scale: 1 });
   const MIN_SCALE = 0.25;
   const MAX_SCALE = 4.0;
@@ -193,7 +352,8 @@ function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRe
     }
 
     function onTouchMove(e: TouchEvent) {
-      e.preventDefault();
+      // 🚨 CRITICAL FIX: If we are dragging an element, completely disable background panning!
+      if (isDraggingRef.current) return;
 
       if (isPinching && e.touches.length === 2) {
         const t1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -292,7 +452,7 @@ function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRe
       viewport.removeEventListener("touchend",   onTouchEnd);
       viewport.removeEventListener("touchcancel",onTouchEnd);
     };
-  }, [viewportRef, contentRef, applyTransform]);
+  }, [viewportRef, contentRef, applyTransform, isDraggingRef]);
 
   return { applyTransform, stateRef };
 }
@@ -305,15 +465,218 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
   const [showPaperModal, setShowPaperModal] = useState(false);
   const [exportingPDF,   setExportingPDF]   = useState(false);
 
+  // 🚨 NEW COMMUNICATION BRIDGE: Tells Pan/Zoom when a drag is happening
+  const isDraggingRef = useRef(false);
+
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef  = useRef<HTMLDivElement>(null);
   const docxRef     = useRef<HTMLDivElement>(null);
 
   const template = getTemplateById(formId);
 
-  const { applyTransform, stateRef } = useTouchPanZoom(viewportRef, contentRef);
+  // Pass the ref to the Pan/Zoom hook
+  const { applyTransform, stateRef } = useTouchPanZoom(viewportRef, contentRef, isDraggingRef);
 
-  /* ── Set initial scale to fit A4 width on screen ── */
+  useEffect(() => {
+    const container = docxRef.current;
+    if (!container || isLoading) return;
+
+    const setupTimer = setTimeout(() => {
+      const draggables = container.querySelectorAll<HTMLElement>(
+        ".docx-wrapper > section.docx article > p, " +
+        ".docx-wrapper > section.docx article > table, " +
+        ".docx-wrapper > section.docx article > div"
+      );
+
+      draggables.forEach(el => {
+        if (!el.style.position || el.style.position === "static") {
+          el.style.position = "relative";
+          el.style.top = "0px";
+          el.style.left = "0px";
+        }
+      });
+    }, 600);
+
+    return () => clearTimeout(setupTimer);
+  }, [isLoading, pageCount]);
+
+  /* ─────────────────────────────────────────────────────────────────
+     DRAG AND DROP LOGIC
+     ───────────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    const container = docxRef.current;
+    if (!container) return;
+
+    function findDraggableParent(target: HTMLElement): HTMLElement | null {
+      if (target.isContentEditable) return null;
+
+      let el: HTMLElement | null = target;
+      while (el && el !== container) {
+        const parent = el.parentElement;
+        if (parent && parent.tagName === "ARTICLE") {
+          return el;
+        }
+        el = parent;
+      }
+      return null;
+    }
+
+    function onPointerDown(e: TouchEvent | MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (target.isContentEditable) return;
+
+      const draggable = findDraggableParent(target);
+      if (!draggable) return;
+
+      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+
+      if (dragTimerRef.current) clearTimeout(dragTimerRef.current);
+
+      dragStartRef.current = {
+        screenX: clientX,
+        screenY: clientY,
+        origTop: parseFloat(draggable.style.top) || 0,
+        origLeft: parseFloat(draggable.style.left) || 0,
+      };
+
+      dragTimerRef.current = setTimeout(() => {
+        dragElRef.current = draggable;
+
+        // 🚨 TELL PAN/ZOOM TO STOP!
+        isDraggingRef.current = true;
+
+        draggable.style.outline = "2px dashed #1e3a5f";
+        draggable.style.opacity = "0.85";
+        draggable.style.zIndex = "100";
+        draggable.style.transition = "none";
+
+        // Disable native browser scrolling just in case
+        document.body.style.overflow = "hidden";
+        document.body.style.touchAction = "none";
+      }, 400);
+    }
+
+    function onPointerMove(e: TouchEvent | MouseEvent) {
+      const clientX = "touches" in e ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX;
+      const clientY = "touches" in e ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
+
+      if (!dragElRef.current) {
+        if (dragTimerRef.current) {
+          const dx = clientX - dragStartRef.current.screenX;
+          const dy = clientY - dragStartRef.current.screenY;
+          if (Math.hypot(dx, dy) > 8) {
+            clearTimeout(dragTimerRef.current);
+            dragTimerRef.current = null;
+          }
+        }
+        return;
+      }
+
+      if (e.cancelable) e.preventDefault();
+
+      const { scale } = stateRef.current;
+      const safeScale = scale > 0 ? scale : 1;
+      const dx = (clientX - dragStartRef.current.screenX) / safeScale;
+      const dy = (clientY - dragStartRef.current.screenY) / safeScale;
+
+      const newLeft = Math.round((dragStartRef.current.origLeft + dx) / 2) * 2;
+      const newTop = Math.round((dragStartRef.current.origTop + dy) / 2) * 2;
+
+      dragElRef.current.style.left = `${newLeft}px`;
+      dragElRef.current.style.top = `${newTop}px`;
+    }
+
+    function onPointerUp() {
+      if (dragTimerRef.current) {
+        clearTimeout(dragTimerRef.current);
+        dragTimerRef.current = null;
+      }
+
+      if (dragElRef.current) {
+        dragElRef.current.style.outline = "";
+        dragElRef.current.style.opacity = "";
+        dragElRef.current.style.zIndex = "";
+        dragElRef.current.style.transition = "";
+        dragElRef.current = null;
+
+        // 🚨 TELL PAN/ZOOM TO START AGAIN!
+        isDraggingRef.current = false;
+
+        // Re-enable native browser scrolling
+        document.body.style.overflow = "";
+        document.body.style.touchAction = "";
+      }
+    }
+
+    container.addEventListener("touchstart", onPointerDown, { passive: true });
+    container.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("touchmove", onPointerMove, { passive: false });
+    window.addEventListener("mousemove", onPointerMove);
+    window.addEventListener("touchend", onPointerUp);
+    window.addEventListener("touchcancel", onPointerUp);
+    window.addEventListener("mouseup", onPointerUp);
+
+    return () => {
+      container.removeEventListener("touchstart", onPointerDown);
+      container.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("touchmove", onPointerMove);
+      window.removeEventListener("mousemove", onPointerMove);
+      window.removeEventListener("touchend", onPointerUp);
+      window.removeEventListener("touchcancel", onPointerUp);
+      window.removeEventListener("mouseup", onPointerUp);
+    };
+  }, [isLoading, pageCount, stateRef]);
+
+  const toggleVoiceTyping = useCallback(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error("Voice typing not supported on this browser.");
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) recognitionRef.current.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "hi-IN";
+    recognition.continuous = true;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      toast.success("Listening for Hindi dictation...");
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((res: any) => res[0].transcript)
+        .join("");
+
+      const activeEl = document.activeElement as HTMLElement;
+
+      if (activeEl && activeEl.classList.contains("legal-editable-field")) {
+        const span = activeEl as HTMLSpanElement;
+        const currentText = span.textContent?.trim() || "";
+        span.textContent = (currentText + " " + transcript).trim();
+        span.classList.remove("is-empty");
+        span.classList.add("has-value");
+        span.dispatchEvent(new Event("input", { bubbles: true }));
+      } else {
+        toast.info("Tap a dotted line field first, then dictate.");
+      }
+    };
+
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, [isListening]);
+
   useEffect(() => {
     const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
     const x = (window.innerWidth - A4_W * scale) / 2;
