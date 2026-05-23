@@ -17,17 +17,9 @@ interface EditorProps {
 
 const A4_W = 794;
 
-/* ─────────────────────────────────────────────────────────────────
-   ContentEditable Dynamic Engine
-   Replaces dotted lines with inline contenteditable spans.
-   This guarantees that long text wraps to the next line naturally
-   instead of hiding inside a tiny fixed-width input box.
-   ───────────────────────────────────────────────────────────────── */
-
 function injectAndWire(container: HTMLElement): void {
   const dotPattern = /([.…]{4,}|_{4,})/g;
 
-  // 1. Walk the document and find all dotted lines
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       if (node.parentElement?.isContentEditable || node.parentElement?.closest('.legal-editable-field')) {
@@ -43,7 +35,6 @@ function injectAndWire(container: HTMLElement): void {
   let n: Node | null;
   while ((n = walker.nextNode())) textNodes.push(n as Text);
 
-  // 2. Replace the text dots with dynamic editable spans
   textNodes.forEach(textNode => {
     const parent = textNode.parentNode;
     if (!parent) return;
@@ -59,17 +50,15 @@ function injectAndWire(container: HTMLElement): void {
         span.className = "legal-editable-field is-empty";
         span.contentEditable = "true";
         span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        span.dataset.placeholder = part; // CSS ::before uses this to display the dots
+        span.dataset.placeholder = part;
         span.setAttribute("spellcheck", "false");
 
-        // Prevent pasting bold/huge text formats
         span.addEventListener("paste", e => {
           e.preventDefault();
           const pastedText = e.clipboardData?.getData("text/plain") || "";
           document.execCommand("insertText", false, pastedText);
         });
 
-        // Dynamic flowing text logic
         span.addEventListener("input", () => {
           const currentText = span.textContent?.trim() || "";
           if (currentText.length > 0) {
@@ -89,7 +78,6 @@ function injectAndWire(container: HTMLElement): void {
     parent.replaceChild(frag, textNode);
   });
 
-  // 3. Handle table cells
   container.querySelectorAll("td").forEach(td => {
     const cleanText = (td.textContent || "").trim().replace(/\u00A0/g, "");
     if (cleanText === "" || /^[.…_]+$/.test(cleanText)) {
@@ -137,7 +125,7 @@ function paginateSection(section: HTMLElement) {
   if (!article) return;
 
   const pageRect = section.getBoundingClientRect();
-  const maxBottom = pageRect.top + 1070; // Adjusted for proper table fit
+  const maxBottom = pageRect.top + 1070;
 
   const children = Array.from(article.children) as HTMLElement[];
   let splitIndex = -1;
@@ -263,7 +251,14 @@ function PaperSizeModal({ onSelect, onCancel }: { onSelect: (s: PaperSize) => vo
   );
 }
 
-function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRef: React.RefObject<HTMLDivElement>) {
+/* ─────────────────────────────────────────────────────────────────
+   PAN AND ZOOM HOOK (Updated with isDraggingRef check)
+   ───────────────────────────────────────────────────────────────── */
+function useTouchPanZoom(
+  viewportRef: React.RefObject<HTMLDivElement>,
+  contentRef: React.RefObject<HTMLDivElement>,
+  isDraggingRef: React.MutableRefObject<boolean> // 🚨 NEW PARAMETER
+) {
   const stateRef = useRef({ x: 0, y: 0, scale: 1 });
   const MIN_SCALE = 0.25;
   const MAX_SCALE = 4.0;
@@ -337,6 +332,9 @@ function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRe
     }
 
     function onTouchMove(e: TouchEvent) {
+      // 🚨 CRITICAL FIX: If we are dragging an element, completely disable background panning!
+      if (isDraggingRef.current) return;
+
       if (isPinching && e.touches.length === 2) {
         e.preventDefault();
         const t1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -436,7 +434,7 @@ function useTouchPanZoom(viewportRef: React.RefObject<HTMLDivElement>, contentRe
       viewport.removeEventListener("touchend", onTouchEnd);
       viewport.removeEventListener("touchcancel", onTouchEnd);
     };
-  }, [viewportRef, contentRef, applyTransform]);
+  }, [viewportRef, contentRef, applyTransform, isDraggingRef]);
 
   return { applyTransform, stateRef };
 }
@@ -455,13 +453,17 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
   const dragTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragStartRef = useRef({ screenX: 0, screenY: 0, origTop: 0, origLeft: 0 });
 
+  // 🚨 NEW COMMUNICATION BRIDGE: Tells Pan/Zoom when a drag is happening
+  const isDraggingRef = useRef(false);
+
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const docxRef = useRef<HTMLDivElement>(null);
 
   const template = getTemplateById(formId);
 
-  const { applyTransform, stateRef } = useTouchPanZoom(viewportRef, contentRef);
+  // Pass the ref to the Pan/Zoom hook
+  const { applyTransform, stateRef } = useTouchPanZoom(viewportRef, contentRef, isDraggingRef);
 
   useEffect(() => {
     const container = docxRef.current;
@@ -486,6 +488,9 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
     return () => clearTimeout(setupTimer);
   }, [isLoading, pageCount]);
 
+  /* ─────────────────────────────────────────────────────────────────
+     DRAG AND DROP LOGIC
+     ───────────────────────────────────────────────────────────────── */
   useEffect(() => {
     const container = docxRef.current;
     if (!container) return;
@@ -525,10 +530,18 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
 
       dragTimerRef.current = setTimeout(() => {
         dragElRef.current = draggable;
+
+        // 🚨 TELL PAN/ZOOM TO STOP!
+        isDraggingRef.current = true;
+
         draggable.style.outline = "2px dashed #1e3a5f";
         draggable.style.opacity = "0.85";
         draggable.style.zIndex = "100";
         draggable.style.transition = "none";
+
+        // Disable native browser scrolling just in case
+        document.body.style.overflow = "hidden";
+        document.body.style.touchAction = "none";
       }, 400);
     }
 
@@ -547,6 +560,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
         }
         return;
       }
+
       if (e.cancelable) e.preventDefault();
 
       const { scale } = stateRef.current;
@@ -573,6 +587,13 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
         dragElRef.current.style.zIndex = "";
         dragElRef.current.style.transition = "";
         dragElRef.current = null;
+
+        // 🚨 TELL PAN/ZOOM TO START AGAIN!
+        isDraggingRef.current = false;
+
+        // Re-enable native browser scrolling
+        document.body.style.overflow = "";
+        document.body.style.touchAction = "";
       }
     }
 
@@ -692,8 +713,6 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
 
   const handlePreview = useCallback(() => {
     if (!docxRef.current) return;
-    // Because we are using contenteditable spans now, the preview is already perfect! 
-    // We just clone the HTML natively.
     const clone = docxRef.current.cloneNode(true) as HTMLElement;
     setPreviewHtml(clone.innerHTML);
   }, []);
