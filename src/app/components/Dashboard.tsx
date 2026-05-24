@@ -86,7 +86,7 @@ export function Dashboard({
         {/* Welcome Section */}
         <div className="px-6 pt-4 pb-2 flex items-center justify-between">
           <div>
-            <p className="text-2xl mb-1 opacity-90">Welcome 👋</p>
+            <p className="text-2xl mb-1 opacity-90">Welcome </p>
             <h2 className="text-2xl font-bold">Legal Docs Maker</h2>
           </div>
 

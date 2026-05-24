@@ -47,3 +47,4 @@ export function TopNavBar({ title, subtitle, onBack, rightElement }: TopNavBarPr
     </div>
   );
 }
+
