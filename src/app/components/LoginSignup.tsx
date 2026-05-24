@@ -1,5 +1,4 @@
 import { motion } from "motion/react";
-import logo from "../../imports/logo.png";
 import { useState } from "react";
 import { Mail, Lock, User, Phone, Eye, EyeOff, Loader2 } from "lucide-react";
 import {
@@ -133,17 +132,7 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex flex-col items-center justify-center px-4 py-8">
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-8 text-center"
-      >
-        <img
-          src={logo}
-          alt={M.logoAlt}
-          className="w-80 max-w-full h-auto mx-auto mb-2 object-contain drop-shadow-lg"
-        />
-      </motion.div>
+      
 
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}

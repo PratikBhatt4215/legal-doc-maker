@@ -14,6 +14,7 @@ import { AdminPanel } from "./components/AdminPanel";
 import { storage } from "../lib/storage";
 import { toast } from "sonner";
 import { Language } from "../lib/i18n";
+import { SavedPDFs } from "./components/SavedPDFs";
 
 type Screen =
   | "splash"
@@ -24,6 +25,7 @@ type Screen =
   | "court"
   | "editor"
   | "profile"
+  "savedpdfs"
   | "admin";
 
 /**
@@ -232,6 +234,8 @@ export default function App() {
           onSelectCourt={handleCourtSelect}
           onSelectForm={handleFormSelect}
           onOpenProfile={() => setCurrentScreen("profile")}
+          onOpenTemplates={() => setCurrentScreen("court")}
+          onOpenSavedPDFs={() => setCurrentScreen("savedpdfs")}
           userData={userData}
         />
       )}
@@ -264,6 +268,12 @@ export default function App() {
           userData={userData}
         />
       )}
+
+      {currentScreen === "savedpdfs" && (
+  <SavedPDFs
+    onBack={goToDashboard}
+  />
+)}
 
       {currentScreen === "admin" && (
         <AdminPanel onBack={() => setCurrentScreen("profile")} />

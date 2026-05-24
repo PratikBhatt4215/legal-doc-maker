@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, Search, Mic, X, Clock, FileText } from "lucide-react";
+// import { User, Search, Mic, X, Clock, FileText } from "lucide-react";
+import { User, Search, Mic, X, Clock, FileText, Home, LayoutGrid, Save } from "lucide-react";
 import { courts, courtForms } from "../../lib/legalData";
 import { MESSAGES } from "../../lib/messages";
 
@@ -8,6 +9,8 @@ interface DashboardProps {
   onSelectCourt: (court: string) => void;
   onSelectForm: (formId: string) => void;
   onOpenProfile: () => void;
+  onOpenTemplates: () => void;
+  onOpenSavedPDFs: () => void;
   userData: any;
 }
 
@@ -15,11 +18,41 @@ export function Dashboard({
   onSelectCourt,
   onSelectForm,
   onOpenProfile,
+  onOpenTemplates,
+  onOpenSavedPDFs,
   userData,
 }: DashboardProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [recentSearches] = useState(MESSAGES.dashboard.recentSearches);
+
+  const startVoiceSearch = () => {
+  const SpeechRecognition =
+    (window as any).SpeechRecognition ||
+    (window as any).webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    alert("Voice search is not supported on this device.");
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+
+  recognition.lang = "en-IN";
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.start();
+
+  recognition.onresult = (event: any) => {
+    const transcript = event.results[0][0].transcript;
+    setSearchQuery(transcript);
+  };
+
+  recognition.onerror = (event: any) => {
+    console.error("Speech recognition error:", event.error);
+  };
+};
 
   const courtTitles = useMemo(
     () => Object.fromEntries(courts.map((c) => [c.id, c.title])),
@@ -270,6 +303,38 @@ export function Dashboard({
             <p className="text-gray-500">{MESSAGES.dashboard.noCourtsHint}</p>
           </motion.div>
         )}
+      </div>
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg px-2 py-2 flex justify-around items-center z-50">
+
+        <button className="flex flex-col items-center text-[#0f4ba8]">
+          <Home className="w-5 h-5" />
+          <span className="text-[11px] mt-1 font-medium">Home</span>
+        </button>
+
+        <button
+  onClick={onOpenTemplates}
+  className="flex flex-col items-center text-gray-500"
+>
+          <LayoutGrid className="w-5 h-5" />
+          <span className="text-[11px] mt-1 font-medium">Templates</span>
+        </button>
+
+        <button
+  onClick={onOpenSavedPDFs}
+  className="flex flex-col items-center text-gray-500"
+>
+          <Save className="w-5 h-5" />
+          <span className="text-[11px] mt-1 font-medium">Saved PDFs</span>
+        </button>
+
+        <button
+          onClick={onOpenProfile}
+          className="flex flex-col items-center text-gray-500"
+        >
+          <User className="w-5 h-5" />
+          <span className="text-[11px] mt-1 font-medium">Profile</span>
+        </button>
+
       </div>
     </div>
   );
