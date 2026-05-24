@@ -456,8 +456,6 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
   // 🚨 NEW COMMUNICATION BRIDGE: Tells Pan/Zoom when a drag is happening
   const isDraggingRef = useRef(false);
 
- 
-
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const docxRef = useRef<HTMLDivElement>(null);
