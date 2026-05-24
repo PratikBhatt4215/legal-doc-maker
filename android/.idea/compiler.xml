@@ -2,7 +2,6 @@
 <project version="4">
   <component name="CompilerConfiguration">
     <bytecodeTargetLevel target="17">
-      <module name="android.capacitor-android" target="21" />
       <module name="share.android.capacitor-share" target="21" />
       <module name="splash-screen.android.capacitor-splash-screen" target="21" />
     </bytecodeTargetLevel>

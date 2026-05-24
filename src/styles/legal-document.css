@@ -43,8 +43,8 @@
   /* Perfectly matched to MS Word */
   color: #111;
   word-wrap: break-word !important;
-  /* Ultra-tight line spacing to match standard legal documents */
-  line-height: 1.15 !important;
+  /* Dynamic line spacing */
+  line-height: var(--document-line-spacing, inherit) !important;
 }
 
 .legal-doc p,
@@ -52,8 +52,18 @@
 .docx-wrapper>section.docx article p {
   white-space: pre-wrap !important;
   /* Minimal gap between paragraphs */
-  margin-bottom: 2px !important;
-  line-height: 1.15 !important;
+  margin-bottom: 6px !important; /* Slightly increased margin-bottom for better paragraph separation with line spacing */
+  line-height: var(--document-line-spacing, inherit) !important;
+}
+
+/* ── Perfect Left Alignment (Hanging Indent Normalization) ── */
+.perfect-left-align p,
+.perfect-left-align .docx-wrapper>section.docx article p,
+.perfect-left-align p *,
+.perfect-left-align span {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  text-indent: 0 !important;
 }
 
 /* Alignments */
@@ -115,7 +125,7 @@
 .legal-doc-container td,
 .legal-doc-container th {
   padding: 4px 6px !important;
-  border: 1px solid #1e293b;
+  border: 1px solid #1e293b !important;
 }
 
 /* ==========================================================================
@@ -153,10 +163,19 @@
 /* ── 3. Filled State (When user types, dots vanish and text flows naturally) ── */
 .legal-editable-field.has-value {
   color: #111 !important;
-  font-weight: 700 !important;
+  font-weight: inherit !important; /* Let text flow with natural formatting (B/U support) */
   background: #ffffff !important;
   border-bottom: 2px solid transparent !important;
   /* Hides the underline */
+}
+
+/* Explicit style overrides for bold and underline tags inside editable fields */
+.legal-editable-field b,
+.legal-editable-field strong {
+  font-weight: bold !important;
+}
+.legal-editable-field u {
+  text-decoration: underline !important;
 }
 
 /* Table Cell Specific Fixes */
@@ -193,4 +212,160 @@
     border: none !important;
     background: transparent !important;
   }
+}
+
+/* ==========================================================================
+   DYNAMIC MARGINS, COLUMNS & INTERACTIVE RULER STYLING
+   ========================================================================== */
+
+/* ── Dynamic Margin Configuration ── */
+.docx-wrapper > section.docx,
+.legal-doc-container section.docx {
+  padding-left: var(--document-left-margin) !important;
+  padding-right: var(--document-right-margin) !important;
+  transition: padding 0.15s ease-out;
+}
+
+/* ── Columns Layout ── */
+.two-columns-layout .docx-wrapper > section.docx article,
+.two-columns-layout .legal-doc-container article {
+  column-count: 2 !important;
+  column-gap: 32px !important;
+}
+
+/* ── Interactive Margin Ruler ── */
+.margin-ruler-container {
+  width: 794px;
+  height: 28px;
+  background: #f8fafc;
+  border-bottom: 1.5px solid #cbd5e1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  box-shadow: inset 0 -2px 4px rgba(0,0,0,0.02);
+  margin-bottom: 8px;
+  border-radius: 6px 6px 0 0;
+  box-sizing: border-box;
+}
+
+.margin-ruler-scale {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 4px;
+  pointer-events: none;
+}
+
+.ruler-tick {
+  height: 6px;
+  width: 1px;
+  background: #94a3b8;
+  position: absolute;
+}
+
+.ruler-tick.major {
+  height: 10px;
+  background: #64748b;
+}
+
+.ruler-tick-label {
+  position: absolute;
+  font-size: 8px;
+  font-weight: 700;
+  color: #64748b;
+  transform: translateX(-50%);
+  bottom: 11px;
+}
+
+.ruler-shaded-area {
+  position: absolute;
+  height: 100%;
+  background: rgba(148, 163, 184, 0.15);
+  pointer-events: none;
+}
+
+.ruler-handle {
+  width: 10px;
+  height: 16px;
+  background: #1e3a5f;
+  border: 1px solid #0f172a;
+  border-radius: 2px;
+  position: absolute;
+  top: 6px;
+  cursor: ew-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+  z-index: 10;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.ruler-handle:hover {
+  background: #9b1c31;
+}
+
+.ruler-handle:active {
+  transform: scale(0.95);
+}
+
+.ruler-handle::after {
+  content: "";
+  width: 2px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* ==========================================================================
+   GLOBAL DOCUMENT TEXT ALIGNMENT STYLES
+   ========================================================================== */
+
+/* 1. Reset all horizontal indents for paragraphs and tables so alignments span the full page width */
+.global-align-left .docx-wrapper>section.docx p,
+.global-align-center .docx-wrapper>section.docx p,
+.global-align-right .docx-wrapper>section.docx p,
+.global-align-justify .docx-wrapper>section.docx p {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  text-indent: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* 2. For tables, align the table box itself using margins */
+.global-align-left .docx-wrapper>section.docx table {
+  margin-left: 0 !important;
+  margin-right: auto !important;
+}
+.global-align-center .docx-wrapper>section.docx table {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+.global-align-right .docx-wrapper>section.docx table {
+  margin-left: auto !important;
+  margin-right: 0 !important;
+}
+.global-align-justify .docx-wrapper>section.docx table {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  width: 100% !important;
+}
+
+/* 3. Apply the text-alignment to every text-containing element */
+.global-align-left * {
+  text-align: left !important;
+}
+
+.global-align-center * {
+  text-align: center !important;
+}
+
+.global-align-right * {
+  text-align: right !important;
+}
+
+.global-align-justify * {
+  text-align: justify !important;
 }

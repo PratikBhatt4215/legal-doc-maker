@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as docx from "docx-preview";
-import { Download, Loader2, Eye, FileText, X, Printer, Mic, MicOff } from "lucide-react";
+import { Download, Loader2, Eye, FileText, X, Printer, Mic, MicOff, Bold, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, Columns, Ruler, BetweenHorizontalStart, RotateCcw } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { storage } from "../../lib/storage";
 import { toast } from "sonner";
@@ -251,6 +251,110 @@ function PaperSizeModal({ onSelect, onCancel }: { onSelect: (s: PaperSize) => vo
   );
 }
 
+function MarginRuler({
+  leftMargin,
+  rightMargin,
+  onLeftMarginChange,
+  onRightMarginChange,
+  isDraggingRef,
+}: {
+  leftMargin: number;
+  rightMargin: number;
+  onLeftMarginChange: (m: number) => void;
+  onRightMarginChange: (m: number) => void;
+  isDraggingRef: React.MutableRefObject<boolean>;
+}) {
+  const rulerWidth = 794;
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Generate tick marks (every 10px, major ticks every 50px)
+  const ticks = [];
+  for (let i = 0; i <= rulerWidth; i += 10) {
+    const isMajor = i % 50 === 0;
+    ticks.push(
+      <div
+        key={i}
+        className={`ruler-tick ${isMajor ? "major" : ""}`}
+        style={{ left: `${i}px` }}
+      >
+        {isMajor && i > 0 && i < rulerWidth && (
+          <span className="ruler-tick-label">{(i / 50).toFixed(0)}</span>
+        )}
+      </div>
+    );
+  }
+
+  const handlePointerDown = (
+    e: React.PointerEvent<HTMLDivElement>,
+    type: "left" | "right"
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+
+    // Disable panning of the document while adjusting margins
+    isDraggingRef.current = true;
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const currentScale = rect.width / rulerWidth;
+
+      if (type === "left") {
+        const clientX = moveEvent.clientX - rect.left;
+        const localX = clientX / currentScale;
+        // Limit left margin strictly between 20px and 220px
+        const newLeft = Math.min(220, Math.max(20, Math.round(localX)));
+        onLeftMarginChange(newLeft);
+      } else {
+        const clientX = rect.right - moveEvent.clientX;
+        const localX = clientX / currentScale;
+        // Limit right margin strictly between 20px and 220px
+        const newRight = Math.min(220, Math.max(20, Math.round(localX)));
+        onRightMarginChange(newRight);
+      }
+    };
+
+    const onPointerUp = (upEvent: PointerEvent) => {
+      handle.releasePointerCapture(upEvent.pointerId);
+      isDraggingRef.current = false; // Re-enable panning
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+
+  return (
+    <div ref={containerRef} className="margin-ruler-container">
+      {/* Visual Ticks scale */}
+      <div className="margin-ruler-scale">{ticks}</div>
+
+      {/* Shaded margin areas */}
+      <div className="ruler-shaded-area" style={{ left: 0, width: `${leftMargin}px` }} />
+      <div className="ruler-shaded-area" style={{ right: 0, width: `${rightMargin}px` }} />
+
+      {/* Left Margin Handle */}
+      <div
+        className="ruler-handle"
+        style={{ left: `${leftMargin - 5}px` }}
+        onPointerDown={(e) => handlePointerDown(e, "left")}
+        title="Drag Left Margin"
+      />
+
+      {/* Right Margin Handle */}
+      <div
+        className="ruler-handle"
+        style={{ right: `${rightMargin - 5}px` }}
+        onPointerDown={(e) => handlePointerDown(e, "right")}
+        title="Drag Right Margin"
+      />
+    </div>
+  );
+}
+
 /* ─────────────────────────────────────────────────────────────────
    PAN AND ZOOM HOOK (Updated with isDraggingRef check)
    ───────────────────────────────────────────────────────────────── */
@@ -445,6 +549,49 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [showPaperModal, setShowPaperModal] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
+  const [lineSpacing, setLineSpacing] = useState<number | null>(null);
+  const [perfectAlign, setPerfectAlign] = useState(false);
+  const [leftMargin, setLeftMargin] = useState(72); // Default Left Margin in px
+  const [rightMargin, setRightMargin] = useState(72); // Default Right Margin in px
+  const [isTwoColumns, setIsTwoColumns] = useState(false);
+  const [showRuler, setShowRuler] = useState(true);
+  const [showSpacingOptions, setShowSpacingOptions] = useState(false);
+  const [globalAlign, setGlobalAlign] = useState(""); // Default "" uses template original styles
+  const [showTools, setShowTools] = useState(false);
+  const [selectionFormat, setSelectionFormat] = useState({
+    bold: false,
+    underline: false,
+    align: "left" as "left" | "center" | "right" | "justify",
+  });
+
+  // Enable styleWithCSS so formatting cleanly applies inline style overrides inside text fields
+  useEffect(() => {
+    try {
+      document.execCommand("styleWithCSS", false, "true");
+    } catch (e) {}
+  }, []);
+
+  // Track rich-text command states based on active document cursor/selection
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      try {
+        const activeEl = document.activeElement;
+        if (activeEl && (activeEl.isContentEditable || activeEl.closest('.legal-doc-container'))) {
+          setSelectionFormat({
+            bold: document.queryCommandState("bold"),
+            underline: document.queryCommandState("underline"),
+            align: document.queryCommandState("justifyCenter") ? "center" :
+                   document.queryCommandState("justifyRight") ? "right" :
+                   document.queryCommandState("justifyFull") ? "justify" : "left",
+          });
+        }
+      } catch (e) {
+        // Ignore errors if querying is temporarily unsupported
+      }
+    };
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => document.removeEventListener("selectionchange", handleSelectionChange);
+  }, []);
 
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
@@ -455,6 +602,8 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
 
   // 🚨 NEW COMMUNICATION BRIDGE: Tells Pan/Zoom when a drag is happening
   const isDraggingRef = useRef(false);
+
+  const originalMarginsRef = useRef<{ left: number; right: number } | null>(null);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -680,6 +829,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
       .then(blob => docx.renderAsync(blob, docxRef.current!, null, {
         inWrapper: true, ignoreWidth: false, ignoreHeight: false,
         ignoreFonts: false, breakPages: true, useBase64URL: true,
+        renderHeaders: false, renderFooters: false,
         className: "docx",
       }))
       .then(() => {
@@ -691,6 +841,19 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
             injectAndWire(docxRef.current);
             applyTransform(0, 0, 1);
             breakPagesDynamically(docxRef.current);
+
+            // Read the actual computed margins of the natively rendered section
+            const firstSection = docxRef.current.querySelector(".docx-wrapper > section.docx, section.docx") as HTMLElement;
+            if (firstSection) {
+              const computedStyle = window.getComputedStyle(firstSection);
+              const computedLeft = parseFloat(computedStyle.paddingLeft);
+              const computedRight = parseFloat(computedStyle.paddingRight);
+              if (!isNaN(computedLeft) && !isNaN(computedRight)) {
+                setLeftMargin(computedLeft);
+                setRightMargin(computedRight);
+                originalMarginsRef.current = { left: computedLeft, right: computedRight };
+              }
+            }
 
             const pc = docxRef.current.querySelectorAll(".docx-wrapper > section.docx, section.docx").length || 1;
             setPageCount(pc);
@@ -724,6 +887,8 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
   const handleResetLayout = useCallback(() => {
     const container = docxRef.current;
     if (!container) return;
+    
+    // 1. Reset standard drag-and-drop elements
     const draggables = container.querySelectorAll<HTMLElement>(
       ".docx-wrapper > section.docx article > p, " +
       ".docx-wrapper > section.docx article > table, " +
@@ -733,7 +898,29 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
       el.style.top = "0px";
       el.style.left = "0px";
     });
-    toast.success("Document layout reset to original!");
+
+    // 2. Reset formatting state variables to original template defaults
+    setLineSpacing(null);
+    setPerfectAlign(false);
+    if (originalMarginsRef.current) {
+      setLeftMargin(originalMarginsRef.current.left);
+      setRightMargin(originalMarginsRef.current.right);
+    } else {
+      setLeftMargin(72);
+      setRightMargin(72);
+    }
+    setIsTwoColumns(false);
+    setShowRuler(true);
+    setShowSpacingOptions(false);
+    setGlobalAlign("");
+    setShowTools(false);
+
+    // 3. Re-paginate to ensure original spacing flowing
+    setTimeout(() => {
+      breakPagesDynamically(container);
+    }, 100);
+
+    toast.success("Document layout & formatting reset to original!");
   }, []);
 
   const handlePaperSelect = async (size: PaperSize) => {
@@ -784,37 +971,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
         onBack={onBack}
       />
 
-      <div style={{ background: "white", borderBottom: "1px solid #e2e8f0", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px" }}>
-          <span style={{ fontSize: 11, color: "#94a3b8" }}>
-            {pageCount} page{pageCount !== 1 ? "s" : ""}
-          </span>
-          <div style={{ flex: 1 }} />
-          <button
-            onClick={toggleVoiceTyping}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              background: isListening ? "#dc2626" : "#f8fafc",
-              color: isListening ? "white" : "#334155",
-              border: "1px solid", borderColor: isListening ? "#dc2626" : "#cbd5e1",
-              borderRadius: 9, padding: "8px 14px", fontWeight: 600, fontSize: 13,
-              cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.15s",
-            }}
-          >
-            {isListening ? <MicOff size={15} /> : <Mic size={15} />}
-            {isListening ? "Listening..." : "Dictate"}
-          </button>
-          <button onClick={handlePreview}
-            style={{ display: "flex", alignItems: "center", gap: 6, background: "#f8fafc", color: "#334155", border: "1px solid #cbd5e1", borderRadius: 9, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
-            <Eye size={15} /> Preview
-          </button>
-          <button onClick={() => setShowPaperModal(true)} disabled={exportingPDF || isLoading}
-            style={{ display: "flex", alignItems: "center", gap: 6, background: "#9b1c31", color: "white", border: "none", borderRadius: 9, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: exportingPDF ? "not-allowed" : "pointer", whiteSpace: "nowrap", boxShadow: "0 2px 8px rgba(155,28,49,0.3)", opacity: exportingPDF ? 0.7 : 1 }}>
-            {exportingPDF ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-            {exportingPDF ? "Generating…" : "Export PDF"}
-          </button>
-        </div>
-      </div>
+
 
       <div
         ref={viewportRef}
@@ -838,52 +995,537 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
             width: `${A4_W}px`, padding: "24px 0 40px",
           }}
         >
+          {showRuler && (
+            <MarginRuler
+              leftMargin={leftMargin}
+              rightMargin={rightMargin}
+              isDraggingRef={isDraggingRef}
+              onLeftMarginChange={(m) => {
+                setLeftMargin(m);
+                setTimeout(() => {
+                  if (docxRef.current) breakPagesDynamically(docxRef.current);
+                }, 100);
+              }}
+              onRightMarginChange={(m) => {
+                setRightMargin(m);
+                setTimeout(() => {
+                  if (docxRef.current) breakPagesDynamically(docxRef.current);
+                }, 100);
+              }}
+            />
+          )}
+
           <div
             id="docx-print-target"
             ref={docxRef}
-            className="legal-doc-container"
+            className={`legal-doc-container ${perfectAlign ? "perfect-left-align" : ""} ${isTwoColumns ? "two-columns-layout" : ""} ${globalAlign ? `global-align-${globalAlign}` : ""}`}
             style={{
               visibility: isLoading ? "hidden" : "visible",
               WebkitUserSelect: "none",
               userSelect: "none",
               position: "relative",
+              "--document-line-spacing": lineSpacing || "inherit",
+              "--document-left-margin": `${leftMargin}px`,
+              "--document-right-margin": `${rightMargin}px`,
             } as React.CSSProperties}
           />
         </div>
 
-        <div
-          style={{
-            position: "absolute",
-            bottom: 24,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 40,
+        {/* Floating reset layout button has been moved into the bottom toolbar to avoid obscuring canvas content */}
+      </div>
+
+      {/* ── Premium Bottom Editing Toolbar & Operations Panel ── */}
+      <div 
+        style={{ 
+          background: "rgba(255, 255, 255, 0.95)", 
+          backdropFilter: "blur(12px)",
+          borderTop: "1px solid #e2e8f0", 
+          boxShadow: "0 -4px 16px rgba(0,0,0,0.08)",
+          zIndex: 50,
+          display: "flex",
+          flexDirection: "column",
+          gap: 0,
+          flexShrink: 0,
+        }}
+      >
+        {/* Dynamic Spacing Secondary Toolbar */}
+        {showTools && showSpacingOptions && (
+          <div 
+            style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              gap: 8, 
+              padding: "10px 16px", 
+              background: "#f8fafc",
+              borderBottom: "1px solid #e2e8f0",
+              overflowX: "auto",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginRight: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Select Line Spacing (1.5 - 2.0):
+            </span>
+            {[1.5, 1.6, 1.7, 1.8, 1.9, 2.0].map((val) => (
+              <button
+                key={val}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  setLineSpacing(val);
+                  setTimeout(() => {
+                    if (docxRef.current) breakPagesDynamically(docxRef.current);
+                  }, 100);
+                }}
+                style={{
+                  background: lineSpacing === val ? "#1e3a5f" : "#ffffff",
+                  color: lineSpacing === val ? "#ffffff" : "#334155",
+                  border: "1px solid",
+                  borderColor: lineSpacing === val ? "#1e3a5f" : "#cbd5e1",
+                  borderRadius: "9999px",
+                  padding: "6px 14px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  boxShadow: lineSpacing === val ? "0 2px 6px rgba(30,58,95,0.3)" : "none",
+                  transition: "all 0.15s",
+                }}
+              >
+                {val.toFixed(1)}x
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Primary Row: Swipeable Horizontal Edit Options */}
+        {showTools && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              gap: 8, 
+              padding: "6px 12px", 
+              overflowX: "auto", 
+              whiteSpace: "nowrap",
+              borderBottom: "1px solid #f1f5f9",
+              scrollbarWidth: "none",
+              msOverflowStyle: "none",
+            }}
+            className="no-scrollbar"
+          >
+            {/* Bold Button */}
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault();
+                try {
+                  document.execCommand("bold");
+                  setSelectionFormat(prev => ({ ...prev, bold: document.queryCommandState("bold") }));
+                } catch (err) {}
+              }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                background: selectionFormat.bold ? "#e0f2fe" : "transparent",
+                color: selectionFormat.bold ? "#0369a1" : "#475569",
+                border: "none",
+                borderRadius: 8,
+                minWidth: "46px",
+                height: "44px",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+              title="Bold"
+            >
+              <div style={{
+                width: 24, height: 24, borderRadius: "50%", background: selectionFormat.bold ? "#bae6fd" : "#f1f5f9",
+                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
+              }}>
+                <Bold size={13} strokeWidth={2.5} />
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>Bold</span>
+            </button>
+
+            {/* Underline Button */}
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault();
+                try {
+                  document.execCommand("underline");
+                  setSelectionFormat(prev => ({ ...prev, underline: document.queryCommandState("underline") }));
+                } catch (err) {}
+              }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                background: selectionFormat.underline ? "#e0f2fe" : "transparent",
+                color: selectionFormat.underline ? "#0369a1" : "#475569",
+                border: "none",
+                borderRadius: 8,
+                minWidth: "46px",
+                height: "44px",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+              title="Underline"
+            >
+              <div style={{
+                width: 24, height: 24, borderRadius: "50%", background: selectionFormat.underline ? "#bae6fd" : "#f1f5f9",
+                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
+              }}>
+                <Underline size={13} strokeWidth={2.5} />
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>Underline</span>
+            </button>
+
+            <div style={{ width: 1, height: 24, background: "#cbd5e1", flexShrink: 0, margin: "0 2px" }} />
+
+            {/* Alignment: Left */}
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault();
+                setGlobalAlign("left");
+              }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                background: globalAlign === "left" ? "#ffedd5" : "transparent",
+                color: globalAlign === "left" ? "#c2410c" : "#475569",
+                border: "none",
+                borderRadius: 8,
+                minWidth: "46px",
+                height: "44px",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+            >
+              <div style={{
+                width: 24, height: 24, borderRadius: "50%", background: globalAlign === "left" ? "#fed7aa" : "#f1f5f9",
+                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
+              }}>
+                <AlignLeft size={13} />
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>Left</span>
+            </button>
+
+            {/* Alignment: Center */}
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault();
+                setGlobalAlign("center");
+              }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                background: globalAlign === "center" ? "#ffedd5" : "transparent",
+                color: globalAlign === "center" ? "#c2410c" : "#475569",
+                border: "none",
+                borderRadius: 8,
+                minWidth: "46px",
+                height: "44px",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+            >
+              <div style={{
+                width: 24, height: 24, borderRadius: "50%", background: globalAlign === "center" ? "#fed7aa" : "#f1f5f9",
+                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
+              }}>
+                <AlignCenter size={13} />
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>Center</span>
+            </button>
+
+            {/* Alignment: Right */}
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault();
+                setGlobalAlign("right");
+              }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                background: globalAlign === "right" ? "#ffedd5" : "transparent",
+                color: globalAlign === "right" ? "#c2410c" : "#475569",
+                border: "none",
+                borderRadius: 8,
+                minWidth: "46px",
+                height: "44px",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+            >
+              <div style={{
+                width: 24, height: 24, borderRadius: "50%", background: globalAlign === "right" ? "#fed7aa" : "#f1f5f9",
+                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
+              }}>
+                <AlignRight size={13} />
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>Right</span>
+            </button>
+
+            {/* Alignment: Justify */}
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault();
+                setGlobalAlign("justify");
+              }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                background: globalAlign === "justify" ? "#ffedd5" : "transparent",
+                color: globalAlign === "justify" ? "#c2410c" : "#475569",
+                border: "none",
+                borderRadius: 8,
+                minWidth: "46px",
+                height: "44px",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+            >
+              <div style={{
+                width: 24, height: 24, borderRadius: "50%", background: globalAlign === "justify" ? "#fed7aa" : "#f1f5f9",
+                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
+              }}>
+                <AlignJustify size={13} />
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>Justify</span>
+            </button>
+
+            <div style={{ width: 1, height: 24, background: "#cbd5e1", flexShrink: 0, margin: "0 2px" }} />
+
+            {/* Columns Toggle Button */}
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault();
+                setIsTwoColumns(prev => !prev);
+                setTimeout(() => {
+                  if (docxRef.current) breakPagesDynamically(docxRef.current);
+                }, 100);
+              }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                background: isTwoColumns ? "#f0fdf4" : "transparent",
+                color: isTwoColumns ? "#15803d" : "#475569",
+                border: "none",
+                borderRadius: 8,
+                minWidth: "46px",
+                height: "44px",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+            >
+              <div style={{
+                width: 24, height: 24, borderRadius: "50%", background: isTwoColumns ? "#bbf7d0" : "#f1f5f9",
+                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
+              }}>
+                <Columns size={13} />
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>Columns</span>
+            </button>
+
+            {/* Spacing Selector Toggle */}
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault();
+                setShowSpacingOptions(prev => !prev);
+              }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                background: showSpacingOptions ? "#faf5ff" : "transparent",
+                color: showSpacingOptions ? "#7e22ce" : "#475569",
+                border: "none",
+                borderRadius: 8,
+                minWidth: "46px",
+                height: "44px",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+            >
+              <div style={{
+                width: 24, height: 24, borderRadius: "50%", background: showSpacingOptions ? "#f3e8ff" : "#f1f5f9",
+                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
+              }}>
+                <BetweenHorizontalStart size={13} style={{ transform: "rotate(90deg)" }} />
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>Spacing</span>
+            </button>
+
+            {/* Ruler Toggle Button */}
+            <button
+              onPointerDown={(e) => {
+                e.preventDefault();
+                setShowRuler(prev => !prev);
+              }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                background: showRuler ? "#f0f9ff" : "transparent",
+                color: showRuler ? "#0369a1" : "#475569",
+                border: "none",
+                borderRadius: 8,
+                minWidth: "46px",
+                height: "44px",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+            >
+              <div style={{
+                width: 24, height: 24, borderRadius: "50%", background: showRuler ? "#e0f2fe" : "#f1f5f9",
+                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
+              }}>
+                <Ruler size={13} />
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>Ruler</span>
+            </button>
+          </motion.div>
+        )}
+
+        {/* Secondary Row: Primary Operations Sub-bar (Preview & Export PDF) - Ultra-Compact Style */}
+        <div 
+          style={{ 
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "space-between", 
+            gap: 8, 
+            padding: "6px 12px 10px",
+            borderTop: "1px solid #f1f5f9",
+            background: "#ffffff",
           }}
         >
+          {/* Format Toggle Button */}
           <button
-            onClick={handleResetLayout}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              setShowTools(prev => !prev);
+            }}
             style={{
-              background: "rgba(15, 23, 42, 0.85)",
-              backdropFilter: "blur(8px)",
-              color: "white",
-              border: "1px solid rgba(255, 255, 255, 0.15)",
-              borderRadius: "9999px",
-              padding: "10px 20px",
-              fontWeight: 600,
-              fontSize: "13px",
               display: "flex",
               alignItems: "center",
-              gap: 8,
-              boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3)",
+              justifyContent: "center",
+              background: showTools ? "#e0f2fe" : "#f1f5f9",
+              color: showTools ? "#0369a1" : "#475569",
+              border: "1px solid",
+              borderColor: showTools ? "#bae6fd" : "#cbd5e1",
+              borderRadius: "10px",
+              padding: "7px 12px",
               cursor: "pointer",
-              transition: "all 0.2s ease",
+              transition: "all 0.15s",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
             }}
-            onMouseDown={(e) => e.currentTarget.style.transform = "scale(0.95)"}
-            onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
-            onTouchStart={(e) => e.currentTarget.style.transform = "scale(0.95)"}
-            onTouchEnd={(e) => e.currentTarget.style.transform = "scale(1)"}
+            title="Formatting & Spacing Tools"
           >
-            Reset Layout
+            <Ruler size={16} style={{ marginRight: showTools ? 4 : 0 }} />
+            {showTools && <span style={{ fontSize: 12, fontWeight: 700 }}>Hide Tools</span>}
+          </button>
+
+          {/* Reset Layout Button */}
+          <button 
+            onClick={handleResetLayout}
+            style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              justifyContent: "center",
+              gap: 5, 
+              background: "#f8fafc", 
+              color: "#64748b", 
+              border: "1px solid #cbd5e1", 
+              borderRadius: "10px", 
+              padding: "7px 12px", 
+              fontWeight: 700, 
+              fontSize: 12, 
+              cursor: "pointer", 
+              flex: 1,
+              transition: "background 0.15s, transform 0.1s",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+            }}
+            onMouseDown={(e) => e.currentTarget.style.transform = "scale(0.98)"}
+            onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
+          >
+            <RotateCcw size={14} /> Reset
+          </button>
+
+          <button 
+            onClick={handlePreview}
+            style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              justifyContent: "center",
+              gap: 5, 
+              background: "#f8fafc", 
+              color: "#334155", 
+              border: "1px solid #cbd5e1", 
+              borderRadius: "10px", 
+              padding: "7px 16px", 
+              fontWeight: 700, 
+              fontSize: 12, 
+              cursor: "pointer", 
+              flex: 1,
+              transition: "background 0.15s, transform 0.1s",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+            }}
+            onMouseDown={(e) => e.currentTarget.style.transform = "scale(0.98)"}
+            onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
+          >
+            <Eye size={14} /> Preview
+          </button>
+          
+          <button 
+            onClick={() => setShowPaperModal(true)} 
+            disabled={exportingPDF || isLoading}
+            style={{ 
+              display: "flex", 
+              alignItems: "center", 
+              justifyContent: "center",
+              gap: 5, 
+              background: "#9b1c31", 
+              color: "white", 
+              border: "none", 
+              borderRadius: "10px", 
+              padding: "7px 16px", 
+              fontWeight: 700, 
+              fontSize: 12, 
+              cursor: exportingPDF ? "not-allowed" : "pointer", 
+              flex: 1.2,
+              boxShadow: "0 4px 12px rgba(155,28,49,0.3)", 
+              opacity: exportingPDF ? 0.7 : 1,
+              transition: "background 0.15s, transform 0.1s",
+            }}
+            onMouseDown={(e) => e.currentTarget.style.transform = "scale(0.98)"}
+            onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
+          >
+            {exportingPDF ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+            {exportingPDF ? "Generating…" : "Export PDF"}
           </button>
         </div>
       </div>
@@ -900,10 +1542,18 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
           <div style={{ flex: 1, overflowY: "auto", background: "#cbd5e1" }}>
             <div style={{
               width: `${A4_W}px`, transformOrigin: "top left",
-              transform: `scale(${previewScale})`,
+              transform: `translateX(${(window.innerWidth - (A4_W * previewScale)) / 2}px) scale(${previewScale})`,
               marginBottom: `-${A4_W * (1 - previewScale)}px`,
             }}>
-              <div className="legal-doc-container" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+              <div 
+                className={`legal-doc-container ${perfectAlign ? "perfect-left-align" : ""} ${isTwoColumns ? "two-columns-layout" : ""} ${globalAlign ? `global-align-${globalAlign}` : ""}`} 
+                style={{
+                  "--document-line-spacing": lineSpacing || "inherit",
+                  "--document-left-margin": `${leftMargin}px`,
+                  "--document-right-margin": `${rightMargin}px`,
+                } as React.CSSProperties}
+                dangerouslySetInnerHTML={{ __html: previewHtml }} 
+              />
             </div>
           </div>
         </div>
