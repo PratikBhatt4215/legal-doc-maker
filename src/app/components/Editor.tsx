@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as docx from "docx-preview";
-import { Download, Loader2, Eye, FileText, X, Printer, Mic, MicOff, Bold, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, Columns, Ruler, BetweenHorizontalStart, RotateCcw } from "lucide-react";
+import { Download, Loader2, Eye, FileText, X, Printer, Mic, MicOff, Bold, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, Table, Ruler, BetweenHorizontalStart, RotateCcw } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { storage } from "../../lib/storage";
 import { toast } from "sonner";
@@ -568,6 +568,9 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
   const [showSpacingOptions, setShowSpacingOptions] = useState(false);
   const [globalAlign, setGlobalAlign] = useState(""); // Default "" uses template original styles
   const [showTools, setShowTools] = useState(false);
+  const [showTableModal, setShowTableModal] = useState(false);
+  const [tableRows, setTableRows] = useState(2);
+  const [tableCols, setTableCols] = useState(5);
   const [selectionFormat, setSelectionFormat] = useState({
     bold: false,
     underline: false,
@@ -933,6 +936,95 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
     toast.success("Document layout & formatting reset to original!");
   }, []);
 
+  const insertTableAtCursor = () => {
+    const selection = window.getSelection();
+    let inserted = false;
+
+    // Create a beautiful, standard legal-styled table matching the theme
+    const table = document.createElement("table");
+    table.className = "inserted-user-table";
+    table.style.width = "100%";
+    table.style.borderCollapse = "collapse";
+    table.style.marginTop = "12px";
+    table.style.marginBottom = "12px";
+    table.style.tableLayout = "fixed";
+
+    const tbody = document.createElement("tbody");
+    for (let r = 0; r < tableRows; r++) {
+      const tr = document.createElement("tr");
+      for (let c = 0; c < tableCols; c++) {
+        const td = document.createElement("td");
+        td.style.padding = "8px 10px";
+        td.style.border = "1px solid #1e293b";
+        td.style.height = "2.2em";
+        td.style.verticalAlign = "middle";
+
+        const span = document.createElement("span");
+        span.className = "legal-editable-field is-empty td-field";
+        span.contentEditable = "true";
+        span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        span.style.display = "block";
+        span.style.width = "100%";
+        span.style.minHeight = "1.5em";
+        span.style.outline = "none";
+        
+        span.addEventListener("input", () => {
+          const text = span.textContent || "";
+          if (text.length > 0) {
+            span.classList.remove("is-empty");
+            span.classList.add("has-value");
+          } else {
+            span.classList.add("is-empty");
+            span.classList.remove("has-value");
+          }
+        });
+
+        td.appendChild(span);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      if (docxRef.current && docxRef.current.contains(range.startContainer)) {
+        range.deleteContents();
+        range.insertNode(table);
+
+        const brP = document.createElement("p");
+        brP.style.minHeight = "1em";
+        brP.innerHTML = "<br>";
+        table.parentNode?.insertBefore(brP, table.nextSibling);
+
+        inserted = true;
+      }
+    }
+
+    if (!inserted && docxRef.current) {
+      const article = docxRef.current.querySelector("article");
+      if (article) {
+        article.appendChild(table);
+        const brP = document.createElement("p");
+        brP.style.minHeight = "1em";
+        brP.innerHTML = "<br>";
+        article.appendChild(brP);
+        inserted = true;
+      }
+    }
+
+    if (inserted) {
+      toast.success(`Inserted a ${tableRows}x${tableCols} table!`);
+      setShowTableModal(false);
+      
+      setTimeout(() => {
+        if (docxRef.current) schedulePagination(docxRef.current);
+      }, 150);
+    } else {
+      toast.error("Tap inside the document first where you want to insert the table.");
+    }
+  };
+
   const handlePaperSelect = async (size: PaperSize) => {
     setShowPaperModal(false);
     handleSave();
@@ -1270,14 +1362,11 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
 
             <div style={{ width: 1, height: 24, background: "#cbd5e1", flexShrink: 0, margin: "0 2px" }} />
 
-            {/* Columns Toggle Button */}
+            {/* Table Insert Button */}
             <button
               onPointerDown={(e) => {
                 e.preventDefault();
-                setIsTwoColumns(prev => !prev);
-                setTimeout(() => {
-                  if (docxRef.current) schedulePagination(docxRef.current);
-                }, 100);
+                setShowTableModal(true);
               }}
               style={{
                 display: "flex",
@@ -1285,8 +1374,8 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 2,
-                background: isTwoColumns ? "#f0fdf4" : "transparent",
-                color: isTwoColumns ? "#15803d" : "#475569",
+                background: showTableModal ? "#f0fdf4" : "transparent",
+                color: showTableModal ? "#15803d" : "#475569",
                 border: "none",
                 borderRadius: 8,
                 minWidth: "46px",
@@ -1296,12 +1385,12 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               }}
             >
               <div style={{
-                width: 24, height: 24, borderRadius: "50%", background: isTwoColumns ? "#bbf7d0" : "#f1f5f9",
+                width: 24, height: 24, borderRadius: "50%", background: showTableModal ? "#bbf7d0" : "#f1f5f9",
                 display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
               }}>
-                <Columns size={13} />
+                <Table size={13} />
               </div>
-              <span style={{ fontSize: 9, fontWeight: 700 }}>Columns</span>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>Table</span>
             </button>
 
             {/* Spacing Selector Toggle */}
@@ -1517,6 +1606,158 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
 
       <AnimatePresence>
         {showPaperModal && <PaperSizeModal onSelect={handlePaperSelect} onCancel={() => setShowPaperModal(false)} />}
+        
+        {showTableModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(15,23,42,0.4)",
+              backdropFilter: "blur(4px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+              padding: 16,
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 15, opacity: 0 }}
+              transition={{ type: "spring", duration: 0.3 }}
+              style={{
+                background: "#ffffff",
+                borderRadius: 16,
+                padding: "24px",
+                width: "100%",
+                maxWidth: "340px",
+                boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>Insert Table</h3>
+                <button
+                  onClick={() => setShowTableModal(false)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#64748b",
+                    cursor: "pointer",
+                    padding: 4,
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
+                {/* Columns Input */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Number of Columns</label>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button
+                      onClick={() => setTableCols(prev => Math.max(1, prev - 1))}
+                      style={{
+                        width: 36, height: 36, borderRadius: 8, border: "1px solid #cbd5e1",
+                        background: "#f8fafc", color: "#334155", fontSize: 16, fontWeight: 600, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center"
+                      }}
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      value={tableCols}
+                      onChange={(e) => setTableCols(Math.max(1, parseInt(e.target.value) || 1))}
+                      style={{
+                        flex: 1, height: 36, borderRadius: 8, border: "1px solid #cbd5e1",
+                        textAlign: "center", fontSize: 15, fontWeight: 600, color: "#1e293b",
+                        outline: "none"
+                      }}
+                    />
+                    <button
+                      onClick={() => setTableCols(prev => Math.min(10, prev + 1))}
+                      style={{
+                        width: 36, height: 36, borderRadius: 8, border: "1px solid #cbd5e1",
+                        background: "#f8fafc", color: "#334155", fontSize: 16, fontWeight: 600, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center"
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Rows Input */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Number of Rows</label>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button
+                      onClick={() => setTableRows(prev => Math.max(1, prev - 1))}
+                      style={{
+                        width: 36, height: 36, borderRadius: 8, border: "1px solid #cbd5e1",
+                        background: "#f8fafc", color: "#334155", fontSize: 16, fontWeight: 600, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center"
+                      }}
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      value={tableRows}
+                      onChange={(e) => setTableRows(Math.max(1, parseInt(e.target.value) || 1))}
+                      style={{
+                        flex: 1, height: 36, borderRadius: 8, border: "1px solid #cbd5e1",
+                        textAlign: "center", fontSize: 15, fontWeight: 600, color: "#1e293b",
+                        outline: "none"
+                      }}
+                    />
+                    <button
+                      onClick={() => setTableRows(prev => Math.min(20, prev + 1))}
+                      style={{
+                        width: 36, height: 36, borderRadius: 8, border: "1px solid #cbd5e1",
+                        background: "#f8fafc", color: "#334155", fontSize: 16, fontWeight: 600, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center"
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={() => setShowTableModal(false)}
+                  style={{
+                    flex: 1, height: 40, borderRadius: 10, border: "1px solid #cbd5e1",
+                    background: "#ffffff", color: "#475569", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={insertTableAtCursor}
+                  style={{
+                    flex: 1, height: 40, borderRadius: 10, border: "none",
+                    background: "#0f766e", color: "#ffffff", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                    boxShadow: "0 2px 5px rgba(15,110,105,0.2)"
+                  }}
+                >
+                  Insert Table
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );
