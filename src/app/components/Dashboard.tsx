@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { User, Search, Mic, X, Clock, FileText, Home, LayoutGrid, Save } from "lucide-react";
 import { courts, courtForms } from "../../lib/legalData";
 import { MESSAGES } from "../../lib/messages";
+import { SpeechRecognition } from "@capacitor-community/speech-recognition";
 
 interface DashboardProps {
   onSelectCourt: (court: string) => void;
@@ -26,32 +27,35 @@ export function Dashboard({
   const [isFocused, setIsFocused] = useState(false);
   const [recentSearches] = useState(MESSAGES.dashboard.recentSearches);
 
-  const startVoiceSearch = () => {
-  const SpeechRecognition =
-    (window as any).SpeechRecognition ||
-    (window as any).webkitSpeechRecognition;
+ const startVoiceSearch = async () => {
+  try {
+    const permission = await SpeechRecognition.requestPermissions();
 
-  if (!SpeechRecognition) {
-    alert("Voice search is not supported on this device.");
-    return;
+    if (!permission.speechRecognition) {
+      alert("Microphone permission denied");
+      return;
+    }
+
+    const available = await SpeechRecognition.available();
+
+    if (!available.available) {
+      alert("Speech recognition not available");
+      return;
+    }
+
+    const result = await SpeechRecognition.start({
+      language: "en-IN",
+      maxResults: 1,
+      prompt: "Speak now",
+      partialResults: false,
+    });
+
+    if (result.matches && result.matches.length > 0) {
+      setSearchQuery(result.matches[0]);
+    }
+  } catch (error) {
+    console.error("Speech recognition error:", error);
   }
-
-  const recognition = new SpeechRecognition();
-
-  recognition.lang = "en-IN";
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
-
-  recognition.start();
-
-  recognition.onresult = (event: any) => {
-    const transcript = event.results[0][0].transcript;
-    setSearchQuery(transcript);
-  };
-
-  recognition.onerror = (event: any) => {
-    console.error("Speech recognition error:", event.error);
-  };
 };
 
   const courtTitles = useMemo(
@@ -169,8 +173,10 @@ export function Dashboard({
               </button>
             )}
             <div className="w-[1px] h-6 bg-gray-200 mx-1" />
-            <button className="p-2 hover:bg-blue-50 text-blue-500 rounded-full transition-colors">
-              <Mic className="w-5 h-5" />
+            <button
+                    onClick={startVoiceSearch}
+                    className="p-2 hover:bg-blue-50 text-blue-500 rounded-full transition-colors"
+>              <Mic className="w-5 h-5" />
             </button>
           </div>
         </motion.div>

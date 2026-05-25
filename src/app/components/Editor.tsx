@@ -120,6 +120,16 @@ function breakPagesDynamically(container: HTMLElement) {
   }
 }
 
+let paginationTimeout: any = null;
+
+function schedulePagination(container: HTMLElement) {
+  clearTimeout(paginationTimeout);
+
+  paginationTimeout = setTimeout(() => {
+    schedulePagination(container);
+  }, 300);
+}
+
 function paginateSection(section: HTMLElement) {
   const article = section.querySelector("article");
   if (!article) return;
@@ -817,7 +827,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
   useEffect(() => {
     const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
     const x = (window.innerWidth - A4_W * scale) / 2;
-    applyTransform(x, 0, scale);
+    applyTransform(0, 0, scale);
   }, [applyTransform]);
 
   useEffect(() => {
@@ -840,7 +850,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
           if (docxRef.current) {
             injectAndWire(docxRef.current);
             applyTransform(0, 0, 1);
-            breakPagesDynamically(docxRef.current);
+            schedulePagination(docxRef.current);
 
             // Read the actual computed margins of the natively rendered section
             const firstSection = docxRef.current.querySelector(".docx-wrapper > section.docx, section.docx") as HTMLElement;
@@ -860,7 +870,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
 
             const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
             const x = (window.innerWidth - A4_W * scale) / 2;
-            applyTransform(x, 0, scale);
+            applyTransform(0, 0, scale);
           }
         };
 
@@ -917,7 +927,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
 
     // 3. Re-paginate to ensure original spacing flowing
     setTimeout(() => {
-      breakPagesDynamically(container);
+      schedulePagination(container);
     }, 100);
 
     toast.success("Document layout & formatting reset to original!");
@@ -987,14 +997,19 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
           </div>
         )}
 
-        <div
-          ref={contentRef}
-          style={{
-            position: "absolute", top: 0, left: 0,
-            transformOrigin: "0 0", willChange: "transform",
-            width: `${A4_W}px`, padding: "24px 0 40px",
-          }}
-        >
+       <div
+  ref={contentRef}
+  style={{
+    position: "relative",
+    top: 0,
+    left: 0,
+    transformOrigin: "0 0",
+    willChange: "transform",
+    width: `${A4_W}px`,
+    padding: "24px 0 40px",
+    margin: "0 auto",
+  }}
+>
           {showRuler && (
             <MarginRuler
               leftMargin={leftMargin}
@@ -1003,13 +1018,13 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               onLeftMarginChange={(m) => {
                 setLeftMargin(m);
                 setTimeout(() => {
-                  if (docxRef.current) breakPagesDynamically(docxRef.current);
+                  if (docxRef.current) schedulePagination(docxRef.current);
                 }, 100);
               }}
               onRightMarginChange={(m) => {
                 setRightMargin(m);
                 setTimeout(() => {
-                  if (docxRef.current) breakPagesDynamically(docxRef.current);
+                  if (docxRef.current) schedulePagination(docxRef.current);
                 }, 100);
               }}
             />
@@ -1018,8 +1033,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
           <div
             id="docx-print-target"
             ref={docxRef}
-            className={`legal-doc-container ${perfectAlign ? "perfect-left-align" : ""} ${isTwoColumns ? "two-columns-layout" : ""} ${globalAlign ? `global-align-${globalAlign}` : ""}`}
-            style={{
+            className={`legal-doc-container ${perfectAlign ? "perfect-left-align" : ""} ${isTwoColumns ? "two-columns-layout" : ""}`}            style={{
               visibility: isLoading ? "hidden" : "visible",
               WebkitUserSelect: "none",
               userSelect: "none",
@@ -1072,7 +1086,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
                   e.preventDefault();
                   setLineSpacing(val);
                   setTimeout(() => {
-                    if (docxRef.current) breakPagesDynamically(docxRef.current);
+                    if (docxRef.current) schedulePagination(docxRef.current);
                   }, 100);
                 }}
                 style={{
@@ -1188,41 +1202,13 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
             <div style={{ width: 1, height: 24, background: "#cbd5e1", flexShrink: 0, margin: "0 2px" }} />
 
             {/* Alignment: Left */}
-            <button
-              onPointerDown={(e) => {
-                e.preventDefault();
-                setGlobalAlign("left");
-              }}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 2,
-                background: globalAlign === "left" ? "#ffedd5" : "transparent",
-                color: globalAlign === "left" ? "#c2410c" : "#475569",
-                border: "none",
-                borderRadius: 8,
-                minWidth: "46px",
-                height: "44px",
-                cursor: "pointer",
-                transition: "all 0.15s",
-              }}
-            >
-              <div style={{
-                width: 24, height: 24, borderRadius: "50%", background: globalAlign === "left" ? "#fed7aa" : "#f1f5f9",
-                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
-              }}>
-                <AlignLeft size={13} />
-              </div>
-              <span style={{ fontSize: 9, fontWeight: 700 }}>Left</span>
-            </button>
+          
 
             {/* Alignment: Center */}
             <button
               onPointerDown={(e) => {
                 e.preventDefault();
-                setGlobalAlign("center");
+                setGlobalAlign("justifyCenter");
               }}
               style={{
                 display: "flex",
@@ -1250,41 +1236,12 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
             </button>
 
             {/* Alignment: Right */}
-            <button
-              onPointerDown={(e) => {
-                e.preventDefault();
-                setGlobalAlign("right");
-              }}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 2,
-                background: globalAlign === "right" ? "#ffedd5" : "transparent",
-                color: globalAlign === "right" ? "#c2410c" : "#475569",
-                border: "none",
-                borderRadius: 8,
-                minWidth: "46px",
-                height: "44px",
-                cursor: "pointer",
-                transition: "all 0.15s",
-              }}
-            >
-              <div style={{
-                width: 24, height: 24, borderRadius: "50%", background: globalAlign === "right" ? "#fed7aa" : "#f1f5f9",
-                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
-              }}>
-                <AlignRight size={13} />
-              </div>
-              <span style={{ fontSize: 9, fontWeight: 700 }}>Right</span>
-            </button>
-
+           
             {/* Alignment: Justify */}
             <button
               onPointerDown={(e) => {
                 e.preventDefault();
-                setGlobalAlign("justify");
+                setGlobalAlign("justifyFull");
               }}
               style={{
                 display: "flex",
@@ -1319,7 +1276,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
                 e.preventDefault();
                 setIsTwoColumns(prev => !prev);
                 setTimeout(() => {
-                  if (docxRef.current) breakPagesDynamically(docxRef.current);
+                  if (docxRef.current) schedulePagination(docxRef.current);
                 }, 100);
               }}
               style={{
@@ -1546,8 +1503,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               marginBottom: `-${A4_W * (1 - previewScale)}px`,
             }}>
               <div 
-                className={`legal-doc-container ${perfectAlign ? "perfect-left-align" : ""} ${isTwoColumns ? "two-columns-layout" : ""} ${globalAlign ? `global-align-${globalAlign}` : ""}`} 
-                style={{
+              className={`legal-doc-container ${perfectAlign ? "perfect-left-align" : ""} ${isTwoColumns ? "two-columns-layout" : ""}`}                style={{
                   "--document-line-spacing": lineSpacing || "inherit",
                   "--document-left-margin": `${leftMargin}px`,
                   "--document-right-margin": `${rightMargin}px`,
