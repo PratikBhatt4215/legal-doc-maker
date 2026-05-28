@@ -15,6 +15,7 @@ import { storage } from "../lib/storage";
 import { toast } from "sonner";
 import { Language } from "../lib/i18n";
 import { SavedPDFs } from "./components/SavedPDFs";
+import { App as CapacitorApp } from "@capacitor/app";
 
 type Screen =
   | "splash"
@@ -82,7 +83,6 @@ export default function App() {
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   useEffect(() => {
-    // Hide the native splash screen to transition into our custom React splash screen
     CapSplashScreen.hide().catch(() => {});
 
     // ── 1. Load persisted preferences ──
@@ -124,6 +124,22 @@ export default function App() {
     sessionStorage.setItem(SESSION_KEY, "true");
     // Stays on "splash" — handleSplashComplete takes over
   }, []);
+
+  useEffect(() => {
+  const listener = CapacitorApp.addListener("backButton", () => {
+
+    if (currentScreen !== "dashboard") {
+      goToDashboard();
+    } else {
+      CapacitorApp.exitApp();
+    }
+
+  });
+
+  return () => {
+    listener.remove();
+  };
+}, [currentScreen]);
 
   // ── Splash complete: navigate appropriately ──────────────────────
   const handleSplashComplete = () => {

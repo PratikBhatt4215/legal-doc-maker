@@ -4,6 +4,13 @@
    ========================================================================== */
 
 /* ── Grey Background & Page Gaps (MS Word Print Layout) ── */
+
+.legal-editable-field.is-empty::before {
+  content: attr(data-placeholder);
+  color: #666;
+  pointer-events: none;
+}
+
 .docx-wrapper {
   background-color: #e2e8f0 !important;
   padding: 32px 0 !important;
@@ -141,18 +148,22 @@
 }
 
 /* ── 1. Empty State (Shows the dots automatically) ── */
-.legal-editable-field.is-empty {
-  border-bottom: 1.5px dotted #666 !important;
-  /* Draws the clean line */
+.legal-editable-field {
+  display: inline-block;
+  min-width: 120px;
+  border-bottom: 1.5px dotted #666;
+  font: inherit !important;
+  line-height: inherit !important;
+  vertical-align: baseline;
 }
 
 /* We use a pseudo-element to hold the dots so they take up exact physical space */
-.legal-editable-field.is-empty::before {
+/* .legal-editable-field.is-empty::before {
   content: attr(data-placeholder);
   color: transparent !important;
   letter-spacing: -1.2px !important;
-  /* Perfect compression so words fit perfectly */
-}
+  /* Perfect compression so words fit perfectly 
+*/
 
 /* ── 2. Focused State ── */
 .legal-editable-field:focus {
