@@ -135,6 +135,26 @@
 
   html {
     font-size: var(--font-size);
+    /* Kill rubber-band / overscroll bounce completely on mobile WebViews */
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
+    overscroll-behavior-x: none;
+    /* Prevent any overflow outside the viewport */
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    /* Body scrolls naturally up/down only — no bounce past content edges */
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
+    overscroll-behavior-x: none;
+    /* Only allow vertical pan gesture — stops accidental horizontal swipe drift */
+    touch-action: pan-y;
+    height: 100%;
+    /* Prevent horizontal overflow that causes left/right rubber band */
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   h1 {

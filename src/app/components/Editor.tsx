@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as docx from "docx-preview";
-import { Download, Loader2, Eye, FileText, X, Printer, Mic, MicOff, Bold, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, Table, Ruler, BetweenHorizontalStart, RotateCcw } from "lucide-react";
+import { Download, Loader2, Eye, FileText, X, Printer, Mic, MicOff, Bold, Underline, AlignCenter, AlignJustify, Table, Ruler, BetweenHorizontalStart, RotateCcw } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { storage } from "../../lib/storage";
 import { toast } from "sonner";
@@ -19,13 +19,14 @@ const A4_W = 794;
 
 function injectAndWire(container: HTMLElement): void {
   const dotPattern = /([.…]{4,}|_{4,})/g;
+  const testPattern = /([.…]{4,}|_{4,})/; // stateless non-global pattern to prevent lastIndex bug!
 
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
-      if (node.parentElement?.isContentEditable || node.parentElement?.closest('.legal-editable-field')) {
+      if (node.parentElement?.closest('.legal-editable-field')) {
         return NodeFilter.FILTER_REJECT;
       }
-      return dotPattern.test(node.textContent || "")
+      return testPattern.test(node.textContent || "")
         ? NodeFilter.FILTER_ACCEPT
         : NodeFilter.FILTER_SKIP;
     }
@@ -44,58 +45,64 @@ function injectAndWire(container: HTMLElement): void {
     if (parts.length <= 1) return;
 
     const frag = document.createDocumentFragment();
-    parts.forEach(part => {
+
+    parts.forEach((part, partIdx) => {
       if (/^(?:[.…]{4,}|_{4,})$/.test(part)) {
         const span = document.createElement("span");
-        span.className = "legal-editable-field is-empty";
-        span.contentEditable = "true";
+        const isInTable = parent && typeof (parent as any).closest === "function"
+          ? (parent as any).closest("table") !== null
+          : false;
+        span.className = isInTable ? "legal-editable-field is-empty td-field" : "legal-editable-field is-empty";
+        // NO contentEditable on span — the parent article handles all editing.
+        // Span is just a visual decoration (dotted underline) inside the editable article.
         span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        span.dataset.placeholder = part;
+        span.dataset.placeholder = isInTable ? "" : part;
         span.textContent = "";
-        span.setAttribute("spellcheck", "false");
 
-        span.addEventListener("paste", e => {
-          e.preventDefault();
-          const pastedText = e.clipboardData?.getData("text/plain") || "";
-          document.execCommand("insertText", false, pastedText);
-        });
-
-        //comment for remove the dot
-        // span.addEventListener("input", () => {
-        //   const currentText = span.textContent?.trim() || "";
-        //   if (currentText.length > 0) {
-        //     span.classList.remove("is-empty");
-        //     span.classList.add("has-value");
-        //   } else {
-        //     span.classList.add("is-empty");
-        //     span.classList.remove("has-value");
-        //   }
-        // });
-
-        span.addEventListener("input", () => {
-          const currentText = span.textContent?.trim() || "";
-
-          if (currentText.length > 0) {
-
-            // remove dots while typing
-            span.textContent = currentText;
-
-            span.classList.remove("is-empty");
-            span.classList.add("has-value");
-
-          } else {
-
-            span.classList.add("is-empty");
-            span.classList.remove("has-value");
-
-            // restore placeholder dots
-            span.textContent = span.dataset.placeholder || "";
-          }
-        });
+        // Dynamic min-width so each dotted field has an appropriate visible width
+        if (!isInTable) {
+          const minW = Math.max(60, Math.round(part.length * 5.5));
+          span.style.setProperty("min-width", `${minW}px`, "important");
+        }
 
         frag.appendChild(span);
+
       } else if (part) {
-        frag.appendChild(document.createTextNode(part));
+        // Wrap leading and trailing whitespaces in legal-conditional-space ONLY if they are layout gaps (2 or more spaces)
+        const leadingMatch = part.match(/^([\s\u00A0]+)/);
+        const leadingSpace = leadingMatch ? leadingMatch[1] : "";
+        
+        const remainingAfterLeading = part.substring(leadingSpace.length);
+        const trailingMatch = remainingAfterLeading.match(/([\s\u00A0]+)$/);
+        const trailingSpace = trailingMatch ? trailingMatch[1] : "";
+        
+        const coreText = remainingAfterLeading.substring(0, remainingAfterLeading.length - trailingSpace.length);
+
+        if (leadingSpace) {
+          if (leadingSpace.length === 1) {
+            frag.appendChild(document.createTextNode(leadingSpace));
+          } else {
+            const spaceSpan = document.createElement("span");
+            spaceSpan.className = "legal-conditional-space";
+            spaceSpan.textContent = leadingSpace;
+            frag.appendChild(spaceSpan);
+          }
+        }
+
+        if (coreText) {
+          frag.appendChild(document.createTextNode(coreText));
+        }
+
+        if (trailingSpace) {
+          if (trailingSpace.length === 1) {
+            frag.appendChild(document.createTextNode(trailingSpace));
+          } else {
+            const spaceSpan = document.createElement("span");
+            spaceSpan.className = "legal-conditional-space";
+            spaceSpan.textContent = trailingSpace;
+            frag.appendChild(spaceSpan);
+          }
+        }
       }
     });
     parent.replaceChild(frag, textNode);
@@ -109,52 +116,106 @@ function injectAndWire(container: HTMLElement): void {
       span.className = "legal-editable-field is-empty td-field";
       span.contentEditable = "true";
       span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+      span.dataset.placeholder = "";
+      span.textContent = "";
       span.setAttribute("spellcheck", "false");
 
-      //changes for remove the dot after writting in the field
-      // span.addEventListener("input", () => {
-      //   const currentText = span.textContent?.trim() || "";
-      //   if (currentText.length > 0) {
-      //     span.classList.remove("is-empty");
-      //     span.classList.add("has-value");
-      //   } else {
-      //     span.classList.add("is-empty");
-      //     span.classList.remove("has-value");
-      //   }
-      // });
+      span.addEventListener("paste", e => {
+        e.preventDefault();
+        const pastedText = e.clipboardData?.getData("text/plain") || "";
+        document.execCommand("insertText", false, pastedText);
+      });
 
-      span.addEventListener("input", () => {
-        const currentText = span.textContent?.trim() || "";
-
-        if (currentText.length > 0) {
-
-          // remove dots while typing
-          span.textContent = currentText;
-
+      span.addEventListener("focus", () => {
+        if (span.classList.contains("is-empty")) {
+          span.textContent = "";
           span.classList.remove("is-empty");
-          span.classList.add("has-value");
+        }
+      });
 
-        } else {
-
+      span.addEventListener("blur", () => {
+        const currentText = span.textContent || "";
+        if (currentText.trim() === "") {
+          span.textContent = span.dataset.placeholder || "";
           span.classList.add("is-empty");
           span.classList.remove("has-value");
+        }
+      });
 
-          // restore placeholder dots
-          span.textContent = span.dataset.placeholder || "";
+      span.addEventListener("input", () => {
+        const currentText = span.textContent || "";
+        if (currentText.length > 0 && currentText !== span.dataset.placeholder) {
+          span.classList.remove("is-empty");
+          span.classList.add("has-value");
+        } else {
+          span.classList.add("is-empty");
+          span.classList.remove("has-value");
         }
       });
       td.appendChild(span);
     }
   });
+
+  // Merge adjacent editable fields to avoid multiple inputs for a single dotted line!
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const fields = Array.from(container.querySelectorAll(".legal-editable-field")) as HTMLSpanElement[];
+    for (let i = 0; i < fields.length - 1; i++) {
+      const current = fields[i];
+      const next = fields[i + 1];
+
+      // Check if they are inside the same block container (like a paragraph, table cell, or section)
+      const p1 = current.closest("p, td, li, div");
+      const p2 = next.closest("p, td, li, div");
+      if (p1 && p1 === p2) {
+        try {
+          const range = document.createRange();
+          range.setStartAfter(current);
+          range.setEndBefore(next);
+          const textBetween = range.toString().trim().replace(/\u00A0/g, "").replace(/\s+/g, "");
+
+          if (textBetween === "") {
+            // Merging next into current!
+            const ph1 = current.dataset.placeholder || "";
+            const ph2 = next.dataset.placeholder || "";
+            current.dataset.placeholder = ph1 + ph2;
+
+            current.textContent = (current.textContent || "") + (next.textContent || "");
+
+            if ((current.textContent || "").trim().length > 0) {
+              current.classList.remove("is-empty");
+              current.classList.add("has-value");
+            } else {
+              current.classList.add("is-empty");
+              current.classList.remove("has-value");
+            }
+
+            next.parentNode?.removeChild(next);
+            changed = true;
+            break;
+          }
+        } catch (rangeErr) {
+          console.error("Range merge error:", rangeErr);
+        }
+      }
+    }
+  }
 }
 
 function lockDocument(container: HTMLElement) {
   container.addEventListener("contextmenu", e => e.preventDefault());
   container.addEventListener("selectstart", e => {
-    if (!(e.target as HTMLElement).isContentEditable) e.preventDefault();
+    const target = e.target as HTMLElement;
+    if (target && !target.isContentEditable && typeof target.closest === "function" && !target.closest("[contenteditable='true']")) {
+      e.preventDefault();
+    }
   });
   container.addEventListener("copy", e => {
-    if (!(e.target as HTMLElement).isContentEditable) e.preventDefault();
+    const target = e.target as HTMLElement;
+    if (target && !target.isContentEditable && typeof target.closest === "function" && !target.closest("[contenteditable='true']")) {
+      e.preventDefault();
+    }
   });
 }
 
@@ -458,10 +519,27 @@ function useTouchPanZoom(
       const vh = viewport!.clientHeight;
       const scaledW = A4_W * scale;
       const scaledH = content!.scrollHeight * scale;
-      const minX = Math.min(0, vw - scaledW);
-      const maxX = Math.max(0, vw - scaledW);
-      const minY = Math.min(0, vh - scaledH);
-      const maxY = 0;
+
+      let minX = 0;
+      let maxX = 0;
+      if (scaledW > vw) {
+        minX = vw - scaledW;
+        maxX = 0;
+      } else {
+        minX = (vw - scaledW) / 2;
+        maxX = (vw - scaledW) / 2;
+      }
+
+      let minY = 0;
+      let maxY = 0;
+      if (scaledH > vh) {
+        minY = vh - scaledH - 120; // 120px extra padding at bottom for very comfortable typing with keyboard
+        maxY = 0;
+      } else {
+        minY = 0;
+        maxY = 0;
+      }
+
       return {
         x: Math.min(Math.max(x, minX), maxX),
         y: Math.min(Math.max(y, minY), maxY),
@@ -511,56 +589,81 @@ function useTouchPanZoom(
         const newX = pinchX - (pinchX - x) * (newScale / scale) + (m.x - lastMidX);
         const newY = pinchY - (pinchY - y) * (newScale / scale) + (m.y - lastMidY);
 
-        applyTransform(newX, newY, newScale);
+        const clamped = clampPosition(newX, newY, newScale);
+        applyTransform(clamped.x, clamped.y, newScale);
         lastDist = newDist;
         lastMidX = m.x;
         lastMidY = m.y;
-
       }
+      else if (e.touches.length === 1) {
+        const activeElement = document.activeElement as HTMLElement;
+        const touchTarget = e.target as HTMLElement;
+        
+        // Only block panning if we are touching the CURRENTLY ACTIVE (FOCUSED) input!
+        // This allows users to swipe freely and zoom/scroll even if their finger touches other inputs!
+        if (
+          activeElement &&
+          activeElement.isContentEditable &&
+          touchTarget &&
+          touchTarget.closest(".legal-editable-field") === activeElement
+        ) {
+          return;
+        }
 
-      //else if (isPanning && e.touches.length === 1) {
-      //   const activeElement = document.activeElement as HTMLElement;
-      //   if (activeElement && activeElement.isContentEditable) {
-      //     return;
-      //   }
+        if (!isPanning) {
+          isPanning = true;
+          touch1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+          lastTime = Date.now();
+          velX = 0; velY = 0;
+          return;
+        }
 
-      //   e.preventDefault();
-      //   const t = e.touches[0];
-      //   const now = Date.now();
-      //   const dt = now - lastTime;
-      //   const dx = t.clientX - touch1.x;
-      //   const dy = t.clientY - touch1.y;
+        e.preventDefault();
+        const t = e.touches[0];
+        const now = Date.now();
+        const dt = now - lastTime;
+        const dx = t.clientX - touch1.x;
+        const dy = t.clientY - touch1.y;
 
-      //   if (dt > 0) {
-      //     velX = dx / dt * 16;
-      //     velY = dy / dt * 16;
-      //   }
-      //   lastTime = now;
-      //   touch1 = { x: t.clientX, y: t.clientY };
+        if (dt > 0) {
+          velX = dx / dt * 16;
+          velY = dy / dt * 16;
+        }
+        lastTime = now;
+        touch1 = { x: t.clientX, y: t.clientY };
 
-      //   const newX = stateRef.current.x + dx;
-      //   const newY = stateRef.current.y + dy;
-      //   applyTransform(newX, newY, stateRef.current.scale);
-      // }
+        const newX = stateRef.current.x + dx;
+        const newY = stateRef.current.y + dy;
+        const clamped = clampPosition(newX, newY, stateRef.current.scale);
+        // If clamped, zero velocity in that direction — prevents rubber-band accumulation!
+        if (clamped.x !== newX) velX = 0;
+        if (clamped.y !== newY) velY = 0;
+        applyTransform(clamped.x, clamped.y, stateRef.current.scale);
+      }
     }
 
     function onTouchEnd(e: TouchEvent) {
       if (e.touches.length === 0) {
         if (isPanning) {
           let { x, y, scale } = stateRef.current;
-          const friction = 0.92;
+          const friction = 0.88; // Slightly more friction = quicker stop, less overshoot
           function inertia() {
             velX *= friction;
             velY *= friction;
+            // Stop when velocity is near-zero
             if (Math.abs(velX) < 0.3 && Math.abs(velY) < 0.3) {
-              const clamped = clampPosition(x, y, scale);
-              if (clamped.x !== x || clamped.y !== y) {
-                applyTransform(clamped.x, clamped.y, scale, true);
-              }
+              // Final snap to valid bounds (no animation needed — already clamped each frame)
               return;
             }
-            x += velX;
-            y += velY;
+            const nextX = x + velX;
+            const nextY = y + velY;
+            // 🔑 Clamp EVERY frame so content NEVER visually overshoots the edge!
+            const clamped = clampPosition(nextX, nextY, scale);
+            // If hitting a wall, kill velocity in that direction to stop rubber-band
+            if (clamped.x !== nextX) velX = 0;
+            if (clamped.y !== nextY) velY = 0;
+            x = clamped.x;
+            y = clamped.y;
             applyTransform(x, y, scale);
             rafId = requestAnimationFrame(inertia);
           }
@@ -633,19 +736,43 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
     } catch (e) { }
   }, []);
 
-  // Track rich-text command states based on active document cursor/selection
+  // Track rich-text command states + selected paragraph for ruler
   useEffect(() => {
     const handleSelectionChange = () => {
       try {
         const activeEl = document.activeElement as HTMLElement | null;
-        if (activeEl && (activeEl.isContentEditable || activeEl.closest('.legal-doc-container'))) {
-          setSelectionFormat({
-            bold: document.queryCommandState("bold"),
-            underline: document.queryCommandState("underline"),
-            align: document.queryCommandState("justifyCenter") ? "center" :
-              document.queryCommandState("justifyRight") ? "right" :
-                document.queryCommandState("justifyFull") ? "justify" : "left",
+        if (activeEl && activeEl.isContentEditable) {
+          const bold = document.queryCommandState("bold");
+          const underline = document.queryCommandState("underline");
+          const align = document.queryCommandState("justifyCenter") ? "center" :
+            document.queryCommandState("justifyRight") ? "right" :
+              document.queryCommandState("justifyFull") ? "justify" : "left";
+
+          setSelectionFormat(prev => {
+            if (prev.bold === bold && prev.underline === underline && prev.align === align) {
+              return prev;
+            }
+            return { bold, underline, align };
           });
+
+          // Track which paragraph the cursor is in — for paragraph-level ruler changes
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount > 0) {
+            let node: Node | null = sel.getRangeAt(0).startContainer;
+            // Walk up to find the closest block element — ONLY P/H/LI, NOT DIV
+            // DIVs in docx-preview are wrapper containers that may hold many paragraphs
+            while (node && node.nodeType !== Node.ELEMENT_NODE) node = node.parentNode;
+            let el = node as HTMLElement | null;
+            while (el && !["P", "H1", "H2", "H3", "H4", "H5", "H6", "LI"].includes(el.tagName)) {
+              el = el.parentElement;
+            }
+            // Only set if the found element is inside the document (not a UI button etc.)
+            if (el && docxRef.current?.contains(el)) {
+              selectedParaRef.current = el;
+            } else {
+              selectedParaRef.current = null;
+            }
+          }
         }
       } catch (e) {
         // Ignore errors if querying is temporarily unsupported
@@ -664,6 +791,12 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
 
   // 🚨 NEW COMMUNICATION BRIDGE: Tells Pan/Zoom when a drag is happening
   const isDraggingRef = useRef(false);
+
+  // Tracks where user last clicked/tapped on the document — used for table insertion position
+  const savedRangeRef = useRef<Range | null>(null);
+
+  // Tracks the paragraph currently containing the cursor — ruler applies indent to this paragraph
+  const selectedParaRef = useRef<HTMLElement | null>(null);
 
   const originalMarginsRef = useRef<{ left: number; right: number } | null>(null);
 
@@ -707,7 +840,8 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
     if (!container) return;
 
     function findDraggableParent(target: HTMLElement): HTMLElement | null {
-      if (target.isContentEditable) return null;
+      // Don't drag if clicking directly on an editable field placeholder
+      if (target.closest(".legal-editable-field")) return null;
 
       let el: HTMLElement | null = target;
       while (el && el !== container) {
@@ -722,7 +856,8 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
 
     function onPointerDown(e: TouchEvent | MouseEvent) {
       const target = e.target as HTMLElement;
-      if (target.isContentEditable) return;
+      // Let native taps on input fields work
+      if (target.closest(".legal-editable-field")) return;
 
       const draggable = findDraggableParent(target);
       if (!draggable) return;
@@ -746,7 +881,9 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
         origLeft: parseFloat(draggable.style.left) || 0,
       };
 
-      // Shorter timeout of 150ms for responsive and quick hold-to-drag UX on touch/mouse
+      // Responsive long-press hold delay of 1200ms.
+      // This allows the OS native text selection to appear first (usually ~500ms).
+      // If the user continues holding past 1.2s, it triggers paragraph drag mode.
       dragTimerRef.current = setTimeout(() => {
         dragElRef.current = draggable;
 
@@ -761,7 +898,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
         // Disable native browser scrolling just in case
         document.body.style.overflow = "hidden";
         document.body.style.touchAction = "none";
-      }, 150);
+      }, 350);
     }
 
     function onPointerMove(e: TouchEvent | MouseEvent) {
@@ -904,7 +1041,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
       }))
       .then(() => {
         if (!docxRef.current) return;
-        lockDocument(docxRef.current); // 🚨 Uncommented lockDocument to prevent copying template text!
+        // ✅ No lockDocument — whole document is now freely editable like MS Word!
 
         const doInject = () => {
           if (docxRef.current) {
@@ -931,8 +1068,43 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
             const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
             const x = (window.innerWidth - A4_W * scale) / 2;
             applyTransform(x, 0, scale);
+
+            // ✅ Make EVERY article element fully contentEditable — single unified MS Word-like editor!
+            docxRef.current.querySelectorAll("article").forEach(article => {
+              const el = article as HTMLElement;
+              el.contentEditable = "true";
+              el.spellcheck = false;
+              el.style.cursor = "text";
+              el.style.outline = "none";
+              el.style.caretColor = "#111";
+
+              // Single input listener: update is-empty/has-value on ALL dotted fields
+              // whenever anything in the article changes (user typed, deleted, etc.)
+              el.addEventListener("input", () => {
+                el.querySelectorAll(".legal-editable-field").forEach(field => {
+                  const f = field as HTMLElement;
+                  const hasText = (f.textContent || "").trim().length > 0;
+                  f.classList.toggle("is-empty", !hasText);
+                  f.classList.toggle("has-value", hasText);
+                });
+                // Also save current selection for table insertion
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount > 0) {
+                  savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+                }
+              });
+
+              // Track click for table insertion position
+              el.addEventListener("click", () => {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount > 0) {
+                  savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+                }
+              });
+            });
           }
         };
+
 
         if (document.fonts && document.fonts.ready) {
           document.fonts.ready.then(() => setTimeout(doInject, 200));
@@ -981,10 +1153,9 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
   }, []);
 
   const insertTableAtCursor = () => {
-    const selection = window.getSelection();
     let inserted = false;
 
-    // Create a beautiful, standard legal-styled table matching the theme
+    // Create a standard legal-styled table
     const table = document.createElement("table");
     table.className = "inserted-user-table";
     table.style.width = "100%";
@@ -1011,18 +1182,11 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
         span.style.width = "100%";
         span.style.minHeight = "1.5em";
         span.style.outline = "none";
-
         span.addEventListener("input", () => {
           const text = span.textContent || "";
-          if (text.length > 0) {
-            span.classList.remove("is-empty");
-            span.classList.add("has-value");
-          } else {
-            span.classList.add("is-empty");
-            span.classList.remove("has-value");
-          }
+          span.classList.toggle("is-empty", text.length === 0);
+          span.classList.toggle("has-value", text.length > 0);
         });
-
         td.appendChild(span);
         tr.appendChild(td);
       }
@@ -1030,21 +1194,42 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
     }
     table.appendChild(tbody);
 
-    if (selection && selection.rangeCount > 0) {
-      const range = selection.getRangeAt(0);
-      if (docxRef.current && docxRef.current.contains(range.startContainer)) {
-        range.deleteContents();
-        range.insertNode(table);
-
+    // Helper: insert table after the block containing the given range
+    const insertAfterBlock = (range: Range): boolean => {
+      const article = docxRef.current?.querySelector("article");
+      if (!article) return false;
+      // Walk up from range start to find a direct article child
+      let node: Node | null = range.startContainer;
+      while (node && node.parentNode !== article) node = node.parentNode;
+      if (node && node.parentNode === article) {
+        // Insert table right after that paragraph/block
+        node.parentNode!.insertBefore(table, node.nextSibling);
         const brP = document.createElement("p");
         brP.style.minHeight = "1em";
         brP.innerHTML = "<br>";
         table.parentNode?.insertBefore(brP, table.nextSibling);
+        return true;
+      }
+      return false;
+    };
 
-        inserted = true;
+    // Priority 1: Use the saved tap/click position from savedRangeRef
+    if (savedRangeRef.current && docxRef.current?.contains(savedRangeRef.current.startContainer)) {
+      inserted = insertAfterBlock(savedRangeRef.current);
+    }
+
+    // Priority 2: Live selection fallback
+    if (!inserted) {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        if (docxRef.current?.contains(range.startContainer)) {
+          inserted = insertAfterBlock(range);
+        }
       }
     }
 
+    // Priority 3: Append at end of article
     if (!inserted && docxRef.current) {
       const article = docxRef.current.querySelector("article");
       if (article) {
@@ -1058,9 +1243,9 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
     }
 
     if (inserted) {
+      savedRangeRef.current = null;
       toast.success(`Inserted a ${tableRows}x${tableCols} table!`);
       setShowTableModal(false);
-
       setTimeout(() => {
         if (docxRef.current) schedulePagination(docxRef.current);
       }, 150);
@@ -1159,7 +1344,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
         ref={viewportRef}
         style={{
           flex: 1, overflow: "hidden", background: "#cbd5e1",
-          position: "relative", touchAction: "none", userSelect: "none",
+          position: "relative", touchAction: "none",
         }}
       >
         {isLoading && (
@@ -1183,13 +1368,29 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               rightMargin={rightMargin}
               isDraggingRef={isDraggingRef}
               onLeftMarginChange={(m) => {
+                // Always move the handle visually
                 setLeftMargin(m);
+                if (selectedParaRef.current) {
+                  // Apply RELATIVE indent to selected paragraph only.
+                  // m is absolute from page left edge; section already provides leftMargin padding.
+                  // So relative indent = m - leftMargin (0px at original position).
+                  const relativeIndent = Math.max(0, m - leftMargin);
+                  selectedParaRef.current.style.paddingLeft = `${relativeIndent}px`;
+                  selectedParaRef.current.style.marginLeft = "0";
+                }
+                // NO fallback to section — that would affect ALL paragraphs!
                 setTimeout(() => {
                   if (docxRef.current) breakPagesDynamically(docxRef.current);
                 }, 100);
               }}
               onRightMarginChange={(m) => {
                 setRightMargin(m);
+                if (selectedParaRef.current) {
+                  const relativeIndent = Math.max(0, m - rightMargin);
+                  selectedParaRef.current.style.paddingRight = `${relativeIndent}px`;
+                  selectedParaRef.current.style.marginRight = "0";
+                }
+                // NO fallback to section
                 setTimeout(() => {
                   if (docxRef.current) breakPagesDynamically(docxRef.current);
                 }, 100);
@@ -1200,7 +1401,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
           <div
             id="docx-print-target"
             ref={docxRef}
-            contentEditable={true}
+            contentEditable={false}
             suppressContentEditableWarning={true}
             spellCheck={false}
             autoCorrect="off"
@@ -1380,129 +1581,41 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
 
             <div style={{ width: 1, height: 24, background: "#cbd5e1", flexShrink: 0, margin: "0 2px" }} />
 
-            {/* Alignment: Left */}
-            <button
-              onPointerDown={(e) => {
-                e.preventDefault();
-                //setGlobalAlign("left");
-                document.execCommand("justifyLeft");
-              }}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 2,
-                background: globalAlign === "left" ? "#ffedd5" : "transparent",
-                color: globalAlign === "left" ? "#c2410c" : "#475569",
-                border: "none",
-                borderRadius: 8,
-                minWidth: "46px",
-                height: "44px",
-                cursor: "pointer",
-                transition: "all 0.15s",
-              }}
-            >
-              <div style={{
-                width: 24, height: 24, borderRadius: "50%", background: globalAlign === "left" ? "#fed7aa" : "#f1f5f9",
-                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
-              }}>
-                //<AlignLeft size={13} />
-              </div>
-              <span style={{ fontSize: 9, fontWeight: 700 }}>Left</span>
-            </button>
-
             {/* Alignment: Center */}
             <button
               onPointerDown={(e) => {
                 e.preventDefault();
-                //setGlobalAlign("center");
                 document.execCommand("justifyCenter");
               }}
               style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 2,
-                background: globalAlign === "center" ? "#ffedd5" : "transparent",
-                color: globalAlign === "center" ? "#c2410c" : "#475569",
-                border: "none",
-                borderRadius: 8,
-                minWidth: "46px",
-                height: "44px",
-                cursor: "pointer",
-                transition: "all 0.15s",
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+                background: selectionFormat.align === "center" ? "#ffedd5" : "transparent",
+                color: selectionFormat.align === "center" ? "#c2410c" : "#475569",
+                border: "none", borderRadius: 8, minWidth: "46px", height: "44px", cursor: "pointer", transition: "all 0.15s",
               }}
+              title="Center"
             >
-              <div style={{
-                width: 24, height: 24, borderRadius: "50%", background: globalAlign === "center" ? "#fed7aa" : "#f1f5f9",
-                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
-              }}>
+              <div style={{ width: 24, height: 24, borderRadius: "50%", background: selectionFormat.align === "center" ? "#fed7aa" : "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <AlignCenter size={13} />
               </div>
               <span style={{ fontSize: 9, fontWeight: 700 }}>Center</span>
-            </button>
-
-            {/* Alignment: Right */}
-            <button
-              onPointerDown={(e) => {
-                e.preventDefault();
-                //setGlobalAlign("right");
-                document.execCommand("justifyRight");
-              }}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 2,
-                background: globalAlign === "right" ? "#ffedd5" : "transparent",
-                color: globalAlign === "right" ? "#c2410c" : "#475569",
-                border: "none",
-                borderRadius: 8,
-                minWidth: "46px",
-                height: "44px",
-                cursor: "pointer",
-                transition: "all 0.15s",
-              }}
-            >
-              <div style={{
-                width: 24, height: 24, borderRadius: "50%", background: globalAlign === "right" ? "#fed7aa" : "#f1f5f9",
-                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
-              }}>
-                //<AlignRight size={13} />
-              </div>
-              <span style={{ fontSize: 9, fontWeight: 700 }}>Right</span>
             </button>
 
             {/* Alignment: Justify */}
             <button
               onPointerDown={(e) => {
                 e.preventDefault();
-                //setGlobalAlign("justify");
                 document.execCommand("justifyFull");
               }}
               style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 2,
-                background: globalAlign === "justify" ? "#ffedd5" : "transparent",
-                color: globalAlign === "justify" ? "#c2410c" : "#475569",
-                border: "none",
-                borderRadius: 8,
-                minWidth: "46px",
-                height: "44px",
-                cursor: "pointer",
-                transition: "all 0.15s",
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+                background: selectionFormat.align === "justify" ? "#ffedd5" : "transparent",
+                color: selectionFormat.align === "justify" ? "#c2410c" : "#475569",
+                border: "none", borderRadius: 8, minWidth: "46px", height: "44px", cursor: "pointer", transition: "all 0.15s",
               }}
+              title="Justify"
             >
-              <div style={{
-                width: 24, height: 24, borderRadius: "50%", background: globalAlign === "justify" ? "#fed7aa" : "#f1f5f9",
-                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
-              }}>
+              <div style={{ width: 24, height: 24, borderRadius: "50%", background: selectionFormat.align === "justify" ? "#fed7aa" : "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <AlignJustify size={13} />
               </div>
               <span style={{ fontSize: 9, fontWeight: 700 }}>Justify</span>

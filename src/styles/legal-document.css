@@ -5,10 +5,8 @@
 
 /* ── Grey Background & Page Gaps (MS Word Print Layout) ── */
 
-.legal-editable-field.is-empty::before {
-  content: attr(data-placeholder);
-  color: #666;
-  pointer-events: none;
+.legal-editable-field.is-empty {
+  color: #94a3b8 !important; /* Soft grey color for native placeholder dots */
 }
 
 .docx-wrapper {
@@ -66,8 +64,8 @@
 /* ── Perfect Left Alignment (Hanging Indent Normalization) ── */
 .perfect-left-align p,
 .perfect-left-align .docx-wrapper>section.docx article p,
-.perfect-left-align p *,
-.perfect-left-align span {
+.perfect-left-align p *:not(.legal-editable-field),
+.perfect-left-align span:not(.legal-editable-field) {
   margin-left: 0 !important;
   padding-left: 0 !important;
   text-indent: 0 !important;
@@ -140,45 +138,69 @@
    ========================================================================== */
 
 .legal-editable-field {
-  display: inline;
+  display: inline-block !important; /* Default — overridden by is-empty/has-value */
+  min-width: 1px !important;
+  vertical-align: baseline !important;
   outline: none !important;
   cursor: text;
-  transition: all 0.2s ease;
-  white-space: pre-wrap;
-}
-
-/* ── 1. Empty State (Shows the dots automatically) ── */
-.legal-editable-field {
-  display: inline-block;
-  min-width: 120px;
-  border-bottom: 1.5px dotted #666;
+  white-space: normal;
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
   font: inherit !important;
   line-height: inherit !important;
-  vertical-align: baseline;
+  background: transparent !important;
+  -webkit-tap-highlight-color: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-shadow: none !important;
 }
 
-/* We use a pseudo-element to hold the dots so they take up exact physical space */
-/* .legal-editable-field.is-empty::before {
-  content: attr(data-placeholder);
-  color: transparent !important;
-  letter-spacing: -1.2px !important;
-  /* Perfect compression so words fit perfectly 
-*/
-
-/* ── 2. Focused State ── */
-.legal-editable-field:focus {
-  border-bottom: 2px solid #9b1c31 !important;
-  background: rgba(155, 28, 49, 0.04) !important;
+/* Article cursor always visible — the single editing surface */
+article[contenteditable="true"] {
+  caret-color: #111 !important;
+  outline: none !important;
+  cursor: text !important;
 }
 
-/* ── 3. Filled State (When user types, dots vanish and text flows naturally) ── */
-.legal-editable-field.has-value {
+/* Kill ALL browser-injected backgrounds when focused or active */
+.legal-editable-field:focus,
+.legal-editable-field:active {
+  background: transparent !important;
+  -webkit-tap-highlight-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Elegant custom selection highlight — very soft teal, no harsh blue */
+.legal-editable-field::selection {
+  background: rgba(15, 118, 110, 0.15) !important;
+  color: inherit !important;
+}
+
+/* ── 1. Empty State: dotted underline, shows the blank fill-in area ── */
+.legal-editable-field.is-empty {
+  display: inline-block !important;
+  min-width: 60px !important;
+  border-bottom: 1.5px dotted #94a3b8 !important;
   color: #111 !important;
-  font-weight: inherit !important; /* Let text flow with natural formatting (B/U support) */
-  background: #ffffff !important;
-  border-bottom: 2px solid transparent !important;
-  /* Hides the underline */
+  background: transparent !important;
+  vertical-align: baseline !important;
+  padding: 0 !important;
+  outline: none !important;
 }
+
+/* ── 2. Filled State: dotted line removed, typed text flows inline ── */
+.legal-editable-field.has-value {
+  display: inline !important;
+  color: #111 !important;
+  font-weight: inherit !important;
+  background: transparent !important;
+  border-bottom: none !important;
+  padding: 0 !important;
+  outline: none !important;
+}
+
+
 
 /* Explicit style overrides for bold and underline tags inside editable fields */
 .legal-editable-field b,
@@ -189,13 +211,24 @@
   text-decoration: underline !important;
 }
 
-/* Table Cell Specific Fixes */
-.legal-editable-field.td-field {
+.legal-editable-field.td-field,
+.legal-editable-field.td-field.is-empty,
+.legal-editable-field.td-field.has-value {
   display: block;
   width: 100%;
   min-height: 1.5em;
   border: none !important;
+  border-bottom: none !important;
 }
+
+/* ── 4. Conditional Spaces (Collapses spaces after and before filled inputs) ── */
+.legal-editable-field.has-value + .legal-conditional-space {
+  display: none !important;
+}
+.legal-conditional-space:has(+ .legal-editable-field.has-value) {
+  display: none !important;
+}
+
 
 /* ── Print / PDF Generation ── */
 @media print {
@@ -230,12 +263,8 @@
    ========================================================================== */
 
 /* ── Dynamic Margin Configuration ── */
-.docx-wrapper > section.docx,
-.legal-doc-container section.docx {
-  padding-left: var(--document-left-margin) !important;
-  padding-right: var(--document-right-margin) !important;
-  transition: padding 0.15s ease-out;
-}
+/* Global page margins are now handled purely by docx-preview defaults. 
+   The interactive ruler only applies inline styles to the selected paragraph. */
 
 /* ── Columns Layout ── */
 .two-columns-layout .docx-wrapper > section.docx article,
@@ -298,20 +327,31 @@
 }
 
 .ruler-handle {
-  width: 10px;
-  height: 16px;
+  width: 18px;          /* Bigger: was 10px */
+  height: 28px;         /* Bigger: was 16px */
   background: #1e3a5f;
-  border: 1px solid #0f172a;
-  border-radius: 2px;
+  border: 2px solid #0f172a;
+  border-radius: 4px;
   position: absolute;
-  top: 6px;
+  top: 1px;
   cursor: ew-resize;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
   z-index: 10;
-  transition: background 0.15s, transform 0.1s;
+  transition: background 0.15s;
+  touch-action: none; /* Required for pointer capture on mobile */
+}
+
+/* Large invisible touch target around handle — 44px total, easy to grab on mobile */
+.ruler-handle::before {
+  content: "";
+  position: absolute;
+  top: -13px;
+  bottom: -13px;
+  left: -13px;
+  right: -13px;
 }
 
 .ruler-handle:hover {
@@ -319,14 +359,15 @@
 }
 
 .ruler-handle:active {
-  transform: scale(0.95);
+  background: #7f1d1d;
 }
 
 .ruler-handle::after {
   content: "";
-  width: 2px;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.5);
+  width: 3px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.65);
+  border-radius: 2px;
 }
 
 /* ==========================================================================
