@@ -27,10 +27,28 @@ allprojects {
         tasks.withType(JavaCompile) {
             sourceCompatibility = JavaVersion.VERSION_17
             targetCompatibility = JavaVersion.VERSION_17
+            try {
+                javaCompiler = javaToolchains.compilerFor {
+                    languageVersion = JavaLanguageVersion.of(17)
+                }
+            } catch (Exception e) {
+                // Ignore if not supported or task doesn't have it
+            }
         }
-        tasks.matching { it.class.name.startsWith("org.jetbrains.kotlin.gradle.tasks.KotlinCompile") }.configureEach {
-            kotlinOptions {
-                jvmTarget = "17"
+        tasks.matching { it.class.name.contains("KotlinCompile") || it.class.name.startsWith("org.jetbrains.kotlin.gradle.tasks.KotlinCompile") }.configureEach {
+            try {
+                kotlinOptions {
+                    jvmTarget = "17"
+                }
+            } catch (Exception e) {
+                // Ignore
+            }
+            try {
+                compilerOptions {
+                    jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+                }
+            } catch (Exception e) {
+                // Ignore
             }
         }
     }
@@ -40,4 +58,38 @@ allprojects {
 
 task clean(type: Delete) {
     delete rootProject.buildDir
+}
+
+subprojects {
+    afterEvaluate { project ->
+        def kotlinExt = project.extensions.findByName('kotlin')
+        if (kotlinExt != null) {
+            try {
+                kotlinExt.jvmToolchain(17)
+            } catch (Exception e) {
+                // Ignore
+            }
+        }
+        def javaExt = project.extensions.findByName('java')
+        if (javaExt != null) {
+            try {
+                javaExt.toolchain.languageVersion.set(JavaLanguageVersion.of(17))
+            } catch (Exception e) {
+                // Ignore
+            }
+        }
+        
+        // Also override compileOptions for android library or application projects
+        def androidExt = project.extensions.findByName('android')
+        if (androidExt != null) {
+            try {
+                androidExt.compileOptions {
+                    sourceCompatibility = JavaVersion.VERSION_17
+                    targetCompatibility = JavaVersion.VERSION_17
+                }
+            } catch (Exception e) {
+                // Ignore
+            }
+        }
+    }
 }
