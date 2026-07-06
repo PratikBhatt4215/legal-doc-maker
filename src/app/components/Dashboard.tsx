@@ -138,43 +138,73 @@ export function Dashboard({
   return (
     <div className="min-h-screen bg-[#fafafa]">
       
-      <div 
-        className="text-white pb-16 relative w-full overflow-hidden"
+      {/* ─── WELCOME HEADER ─────────────────────────────────────── */}
+      <div
+        className="relative w-full overflow-hidden text-white"
         style={{
-          background: "linear-gradient(to right, #001757 0%, #012c94 100%)"
+          background: "linear-gradient(135deg, #001252 0%, #0033aa 60%, #0040cc 100%)",
+          paddingBottom: "72px",
+          minHeight: "180px"
         }}
       >
-        {/* Background Illustration */}
+        {/* Background Illustration – right half, blended with gradient */}
         <img
           src={headerIllustration}
-          alt="Legal Illustration"
-          className="absolute right-0 bottom-0 w-44 h-full object-contain pointer-events-none opacity-85 z-10"
+          alt=""
           style={{
-            WebkitMaskImage: "linear-gradient(to left, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 100%)",
-            maskImage: "linear-gradient(to left, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 100%)"
+            position: "absolute",
+            right: 0,
+            bottom: 0,
+            height: "100%",
+            width: "55%",
+            objectFit: "cover",
+            objectPosition: "left center",
+            pointerEvents: "none",
+            opacity: 0.92,
+            zIndex: 1,
+            WebkitMaskImage: "linear-gradient(to right, transparent 0%, rgba(0,0,0,0.7) 30%, rgba(0,0,0,1) 60%)",
+            maskImage: "linear-gradient(to right, transparent 0%, rgba(0,0,0,0.7) 30%, rgba(0,0,0,1) 60%)"
           }}
         />
 
-        {/* Top App Bar spacer */}
-        <div className="h-5" />
- 
-        {/* Welcome Section */}
-        <div className="px-6 pt-4 pb-2 relative z-10 flex justify-between items-start">
-          <div>
-            <p className="text-xl mb-1 opacity-90">{M.welcome}</p>
-            <h2 className="text-3xl font-extrabold tracking-tight">{M.appTitle}</h2>
-          </div>
+        {/* Profile button – top-right corner, above everything */}
+        <button
+          onClick={onOpenProfile}
+          style={{
+            position: "absolute",
+            top: 12,
+            right: 14,
+            zIndex: 30,
+            width: 44,
+            height: 44,
+            borderRadius: "50%",
+            background: "#2a6ef5",
+            border: "2px solid rgba(255,255,255,0.25)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.25)"
+          }}
+        >
+          <User style={{ width: 22, height: 22, color: "white" }} />
+        </button>
 
-          <button
-            onClick={onOpenProfile}
-            className="w-12 h-12 rounded-full bg-[#2563eb] flex items-center justify-center border border-white/20 shadow-md z-20 flex-shrink-0"
-          >
-            <User className="w-6 h-6 text-white" />
-          </button>
+        {/* Text content – left side, starts below status bar */}
+        <div style={{ position: "relative", zIndex: 10, padding: "0px 20px 8px" }}>
+          {/* Spacer to push text below the status bar + profile button row */}
+          <div style={{ height: 60 }} />
+          <p style={{ margin: 0, fontSize: 17, fontWeight: 400, opacity: 0.9 }}>
+            {M.welcome}
+          </p>
+          <h2 style={{ margin: "4px 0 0", fontSize: 30, fontWeight: 800, lineHeight: 1.15 }}>
+            {M.appTitle}
+          </h2>
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-5 relative z-20 -mt-7">
+      {/* ─── SEARCH BAR ─────────────────────────────────────────── */}
+      <div className="max-w-2xl mx-auto px-5 relative z-20" style={{ marginTop: "-24px" }}>
         <motion.div
           animate={{
             scale: isFocused ? 1.01 : 1,
