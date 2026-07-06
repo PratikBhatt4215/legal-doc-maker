@@ -1,17 +1,42 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-// import { User, Search, Mic, X, Clock, FileText } from "lucide-react";
-import { User, Search, Mic, X, Clock, FileText, Home, LayoutGrid, Save } from "lucide-react";
+import { User, Search, Mic, X, Clock, FileText, Home, Save, FolderOpen, History } from "lucide-react";
 import { courts, courtForms } from "../../lib/legalData";
-import { MESSAGES } from "../../lib/messages";
+import { MESSAGES, MESSAGES_HI } from "../../lib/messages";
 import { SpeechRecognition } from "@capacitor-community/speech-recognition";
+import { storage } from "../../lib/storage";
+
+// ── Custom Court Logos ────────────────────────────────────────────────
+import parentHighCourt from "../../assets/icons/high_court.png";
+import parentDistrictCourt from "../../assets/icons/parent_district_court.png";
+import parentFamilyCourt from "../../assets/icons/parent_family_court.png";
+import parentJuvenileCourt from "../../assets/icons/parent_juvenile_court.png";
+import parentRevenueCourt from "../../assets/icons/parent_revenue_court.png";
+import parentForumCourt from "../../assets/icons/parent_forum_court.png";
+import parentRegistrar from "../../assets/icons/parent_registrar.png";
+import parentGeneralFiles from "../../assets/icons/general_format.png";
+import headerIllustration from "../../assets/header_illustration.png";
+
+export const COURT_LOGOS: Record<string, string> = {
+  'high-court': parentHighCourt,
+  'district-court': parentDistrictCourt,
+  'family-court': parentFamilyCourt,
+  'juvenile-court': parentJuvenileCourt,
+  'revenue-court': parentRevenueCourt,
+  'forum-court': parentForumCourt,
+  'registrar': parentRegistrar,
+  'file': parentGeneralFiles,
+};
 
 interface DashboardProps {
   onSelectCourt: (court: string) => void;
   onSelectForm: (formId: string) => void;
   onOpenProfile: () => void;
-  onOpenTemplates: () => void;
+  onOpenUploadedFiles: () => void;
   onOpenSavedPDFs: () => void;
+  onOpenDrafts: () => void;
+  onOpenAdmin?: () => void;
+  isAdmin?: boolean;
   userData: any;
 }
 
@@ -19,10 +44,15 @@ export function Dashboard({
   onSelectCourt,
   onSelectForm,
   onOpenProfile,
-  onOpenTemplates,
+  onOpenUploadedFiles,
   onOpenSavedPDFs,
+  onOpenDrafts,
   userData,
 }: DashboardProps) {
+  const [language] = useState<"en" | "hi">(() => {
+    return (storage.loadLanguage() as "en" | "hi") || "hi";
+  });
+  const M = language === "hi" ? MESSAGES_HI.dashboard : MESSAGES.dashboard;
   const [searchQuery, setSearchQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [recentSearches] = useState(MESSAGES.dashboard.recentSearches);
@@ -86,11 +116,13 @@ export function Dashboard({
 
   const filteredCourts = useMemo(() => {
     const query = searchQuery.toLowerCase();
-    if (!query) return courts;
+    let visibleCourts = courts.filter(court => court.id !== "registrar" && court.id !== "file");
+    if (!query) return visibleCourts;
 
-    return courts.filter((court) => {
+    return visibleCourts.filter((court) => {
+      const courtTitle = language === "hi" ? (court.titleHi || court.title) : court.title;
       const courtMatch =
-        court.title.toLowerCase().includes(query) ||
+        courtTitle.toLowerCase().includes(query) ||
         court.description.toLowerCase().includes(query);
       if (courtMatch) return true;
 
@@ -101,42 +133,48 @@ export function Dashboard({
           form.description.toLowerCase().includes(query),
       );
     });
-  }, [searchQuery]);
+  }, [searchQuery, language]);
 
   return (
     <div className="min-h-screen bg-[#fafafa]">
       
-     
       <div 
-        className="bg-[#0f4ba8] text-white pb-28 relative w-full"
+        className="text-white pb-16 relative w-full overflow-hidden"
         style={{
-          clipPath: "ellipse(105% 100% at 50% 0%)"
+          background: "linear-gradient(to right, #001757 0%, #012c94 100%)"
         }}
       >
-        {/* Top App Bar */}
-        <div className="h-16 flex items-center justify-between px-4">
-          <div className="w-8" />
-          <h1 className="text-2xl font-medium tracking-wide">Legal Docs Maker</h1>
-          <div className="w-8" />
-        </div>
+        {/* Background Illustration */}
+        <img
+          src={headerIllustration}
+          alt="Legal Illustration"
+          className="absolute right-0 bottom-0 w-44 h-full object-contain pointer-events-none opacity-85 z-10"
+          style={{
+            WebkitMaskImage: "linear-gradient(to left, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 100%)",
+            maskImage: "linear-gradient(to left, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 100%)"
+          }}
+        />
 
+        {/* Top App Bar spacer */}
+        <div className="h-5" />
+ 
         {/* Welcome Section */}
-        <div className="px-6 pt-4 pb-2 flex items-center justify-between">
+        <div className="px-6 pt-4 pb-2 relative z-10 flex justify-between items-start">
           <div>
-            <p className="text-2xl mb-1 opacity-90">Welcome </p>
-            <h2 className="text-2xl font-bold">Legal Docs Maker</h2>
+            <p className="text-xl mb-1 opacity-90">{M.welcome}</p>
+            <h2 className="text-3xl font-extrabold tracking-tight">{M.appTitle}</h2>
           </div>
 
           <button
             onClick={onOpenProfile}
-            className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/10"
+            className="w-12 h-12 rounded-full bg-[#2563eb] flex items-center justify-center border border-white/20 shadow-md z-20 flex-shrink-0"
           >
-            <User className="w-7 h-7 text-white" />
+            <User className="w-6 h-6 text-white" />
           </button>
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-5 relative z-20 -mt-16">
+      <div className="max-w-2xl mx-auto px-5 relative z-20 -mt-7">
         <motion.div
           animate={{
             scale: isFocused ? 1.01 : 1,
@@ -150,13 +188,11 @@ export function Dashboard({
           `}
         >
           <div className="pl-4 pr-2">
-            <Search
-              className={`w-5 h-5 transition-colors duration-300 ${isFocused ? "text-[#9b1c31]" : "text-gray-400"}`}
-            />
+            <Search className={`w-5 h-5 transition-colors ${isFocused ? 'text-[#9b1c31]' : 'text-[#0f4ba8]/60'}`} />
           </div>
           <input
             type="text"
-            placeholder={MESSAGES.dashboard.searchPlaceholder}
+            placeholder={M.searchPlaceholder}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => setIsFocused(true)}
@@ -194,7 +230,7 @@ export function Dashboard({
                 {searchQuery ? (
                   <>
                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-2">
-                      {MESSAGES.dashboard.suggestionsLabel}
+                      {M.suggestionsLabel}
                     </h4>
                     <div className="space-y-1">
                       {allMatchingForms.length > 0 ? (
@@ -221,24 +257,25 @@ export function Dashboard({
                           ))
                       ) : (
                         <div className="px-3 py-2 text-sm text-gray-500 italic">
-                          {MESSAGES.dashboard.noMatchFound}
+                          {M.noMatchFound}
                         </div>
                       )}
                     </div>
                   </>
                 ) : (
                   <>
-                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-2">
-                      {MESSAGES.dashboard.recentLabel}
-                    </h4>
-                    <div className="space-y-1">
-                      {recentSearches.map((term, i) => (
+                    <div className="px-5 pb-3 text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                      <Clock className="w-3.5 h-3.5" />
+                      {M.recentLabel}
+                    </div>
+                    <div className="px-2 flex flex-wrap gap-2">
+                      {M.recentSearches.map((term, i) => (
                         <button
                           key={i}
                           onClick={() => setSearchQuery(term)}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 rounded-xl transition-colors text-left group"
+                          className="px-4 py-2 bg-gray-50 hover:bg-gray-100 rounded-xl text-sm transition-colors flex items-center gap-2 border border-gray-100"
                         >
-                          <Clock className="w-4 h-4 text-gray-300 group-hover:text-[#9b1c31]" />
+                          <Search className="w-3 h-3 text-gray-400" />
                           <span className="text-gray-600 font-medium">{term}</span>
                         </button>
                       ))}
@@ -252,6 +289,7 @@ export function Dashboard({
       </div>
 
       <div className="px-4 pt-10 pb-24 relative z-10 max-w-2xl mx-auto">
+        
         <div className="grid grid-cols-2 gap-4">
           <AnimatePresence mode="popLayout">
             {filteredCourts.map((court) => (
@@ -268,23 +306,22 @@ export function Dashboard({
                 className="group bg-white rounded-3xl p-5 shadow-[0_10px_25px_rgba(0,0,0,0.015)] hover:shadow-[0_15px_30px_rgba(0,0,0,0.05)] transition-all cursor-pointer border border-gray-100/60 flex flex-col justify-between min-h-[185px]"
               >
                 <div className="flex flex-col gap-4">
-                  {/* Icon With Proper Tint */}
                   <div
-                    className="w-14 h-14 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-105 duration-300"
-                    style={{ backgroundColor: `${court.color}12` }}
+                    className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center transition-transform group-hover:scale-105 duration-300 bg-gray-50 border border-gray-100"
                   >
-                    <court.icon
-                      className="w-7 h-7"
-                      style={{ color: court.color }}
+                    <img
+                      src={COURT_LOGOS[court.id] || "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=128&auto=format&fit=crop&q=60"}
+                      alt={court.title}
+                      className="w-14 h-14 object-cover rounded-2xl"
                     />
                   </div>
 
                   <div>
                     <h3 className="font-bold text-lg text-[#1e3a5f] mb-1 group-hover:text-[#9b1c31] transition-colors leading-snug">
-                      {court.title}
+                      {language === "hi" ? (court.titleHi || court.title) : court.title}
                     </h3>
                     <p className="text-gray-400 text-xs font-medium leading-relaxed">
-                      {court.description}
+                      {language === "hi" ? (court.descriptionHi || court.description) : court.description}
                     </p>
                   </div>
                 </div>
@@ -300,45 +337,55 @@ export function Dashboard({
             animate={{ opacity: 1 }}
             className="text-center py-20"
           >
-            <div className="bg-gray-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="bg-white/80 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
               <Search className="w-8 h-8 text-gray-400" />
             </div>
-            <h3 className="text-xl font-bold text-[#1e3a5f]">
-              {MESSAGES.dashboard.noCourtsFound}
-            </h3>
-            <p className="text-gray-500">{MESSAGES.dashboard.noCourtsHint}</p>
+            <h3 className="text-xl font-bold text-[#1e3a5f] mb-2">{M.noCourtsFound}</h3>
+            <p className="text-gray-500 font-medium">{M.noCourtsHint}</p>
           </motion.div>
         )}
       </div>
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg px-2 py-2 flex justify-around items-center z-50">
 
+      {/* Floating Action Button for New File */}
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => onSelectCourt('file')}
+        className="fixed bottom-24 right-6 w-16 h-16 bg-[#0f4ba8] text-white rounded-2xl shadow-lg shadow-[#0f4ba8]/30 flex items-center justify-center z-40 border border-white/20"
+      >
+        <div className="flex flex-col items-center">
+          <FileText className="w-6 h-6 mb-0.5" />
+          <span className="text-[10px] font-bold leading-none">{language === "hi" ? "नई फ़ाइल" : "New File"}</span>
+        </div>
+      </motion.button>
+
+      {/* Bottom Navigation Menu */}
+      <div className="fixed bottom-0 left-0 right-0 h-20 bg-white border-t border-gray-100 flex items-center justify-around px-6 z-40 pb-safe">
+        
         <button className="flex flex-col items-center text-[#0f4ba8]">
-          <Home className="w-5 h-5" />
-          <span className="text-[11px] mt-1 font-medium">Home</span>
+          <Home className="w-6 h-6" />
+          <span className="text-[11px] mt-1 font-bold">{language === "hi" ? "होम" : "Home"}</span>
         </button>
 
         <button
-  onClick={onOpenTemplates}
-  className="flex flex-col items-center text-gray-500"
->
-          <LayoutGrid className="w-5 h-5" />
-          <span className="text-[11px] mt-1 font-medium">Templates</span>
-        </button>
-
-        <button
-  onClick={onOpenSavedPDFs}
-  className="flex flex-col items-center text-gray-500"
->
+          onClick={onOpenSavedPDFs}
+          className="flex flex-col items-center text-gray-500 hover:text-[#0f4ba8] transition-colors"
+        >
           <Save className="w-5 h-5" />
-          <span className="text-[11px] mt-1 font-medium">Saved PDFs</span>
+          <span className="text-[11px] mt-1 font-medium">{language === "hi" ? "सेव्ड पीडीएफ" : "Saved PDFs"}</span>
+        </button>
+
+        <button onClick={onOpenDrafts} className="flex flex-col items-center text-gray-500">
+          <History className="w-5 h-5" />
+          <span className="text-[11px] mt-1 font-medium">{language === "hi" ? "ड्राफ्ट्स" : "Drafts"}</span>
         </button>
 
         <button
           onClick={onOpenProfile}
-          className="flex flex-col items-center text-gray-500"
+          className="flex flex-col items-center text-gray-500 hover:text-[#0f4ba8] transition-colors"
         >
           <User className="w-5 h-5" />
-          <span className="text-[11px] mt-1 font-medium">Profile</span>
+          <span className="text-[11px] mt-1 font-medium">{language === "hi" ? "प्रोफ़ाइल" : "Profile"}</span>
         </button>
 
       </div>

@@ -1,12 +1,14 @@
 import { motion } from "motion/react";
 import { useState } from "react";
 import { ArrowLeft, Plus, Edit, Trash2, Users, FileText, DollarSign } from "lucide-react";
+import { storage } from "../../lib/storage";
 
 interface AdminPanelProps {
   onBack: () => void;
 }
 
 export function AdminPanel({ onBack }: AdminPanelProps) {
+  const isHi = storage.loadLanguage() === "hi";
   const [activeTab, setActiveTab] = useState<"forms" | "users" | "payments">("forms");
 
   const mockForms = [
@@ -36,7 +38,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
             className="flex items-center gap-2 text-[#1e3a5f] hover:bg-gray-100 px-4 py-2 rounded-lg transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
-            <span>Back to Profile</span>
+            <span>{isHi ? "प्रोफ़ाइल पर वापस जाएँ" : "Back to Profile"}</span>
           </button>
         </div>
       </div>
@@ -47,8 +49,8 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="text-3xl font-bold text-[#1e3a5f] mb-2">Admin Panel</h1>
-          <p className="text-gray-600">Manage forms, users, and payments</p>
+          <h1 className="text-3xl font-bold text-[#1e3a5f] mb-2">{isHi ? "व्यवस्थापक पैनल" : "Admin Panel"}</h1>
+          <p className="text-gray-600">{isHi ? "फ़ॉर्म, उपयोगकर्ता और भुगतान प्रबंधित करें" : "Manage forms, users, and payments"}</p>
         </motion.div>
 
         <div className="flex gap-4 mb-6 bg-white rounded-xl p-2 shadow-sm">
@@ -61,7 +63,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
             }`}
           >
             <FileText className="w-5 h-5" />
-            <span>Forms</span>
+            <span>{isHi ? "फ़ॉर्म" : "Forms"}</span>
           </button>
           <button
             onClick={() => setActiveTab("users")}
@@ -72,7 +74,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
             }`}
           >
             <Users className="w-5 h-5" />
-            <span>Users</span>
+            <span>{isHi ? "उपयोगकर्ता" : "Users"}</span>
           </button>
           <button
             onClick={() => setActiveTab("payments")}
@@ -83,7 +85,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
             }`}
           >
             <DollarSign className="w-5 h-5" />
-            <span>Payments</span>
+            <span>{isHi ? "भुगतान" : "Payments"}</span>
           </button>
         </div>
 
@@ -96,10 +98,10 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
           {activeTab === "forms" && (
             <div>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-[#1e3a5f]">Manage Forms</h2>
+                <h2 className="text-xl font-bold text-[#1e3a5f]">{isHi ? "फ़ॉर्म प्रबंधित करें" : "Manage Forms"}</h2>
                 <button className="flex items-center gap-2 bg-[#1e3a5f] text-white px-4 py-2 rounded-lg hover:bg-[#2a4a6f] transition-colors">
                   <Plus className="w-5 h-5" />
-                  Add Form
+                  {isHi ? "फ़ॉर्म जोड़ें" : "Add Form"}
                 </button>
               </div>
               <div className="space-y-4">
@@ -128,7 +130,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
 
           {activeTab === "users" && (
             <div>
-              <h2 className="text-xl font-bold text-[#1e3a5f] mb-6">Manage Users</h2>
+              <h2 className="text-xl font-bold text-[#1e3a5f] mb-6">{isHi ? "उपयोगकर्ता प्रबंधित करें" : "Manage Users"}</h2>
               <div className="space-y-4">
                 {mockUsers.map((user) => (
                   <div
@@ -140,7 +142,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
                       <p className="text-sm text-gray-500">{user.email}</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-[#1e3a5f]">{user.documents} docs</p>
+                      <p className="font-bold text-[#1e3a5f]">{user.documents} {isHi ? "दस्तावेज़" : "docs"}</p>
                     </div>
                   </div>
                 ))}
@@ -150,7 +152,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
 
           {activeTab === "payments" && (
             <div>
-              <h2 className="text-xl font-bold text-[#1e3a5f] mb-6">Manage Payments</h2>
+              <h2 className="text-xl font-bold text-[#1e3a5f] mb-6">{isHi ? "भुगतान प्रबंधित करें" : "Manage Payments"}</h2>
               <div className="space-y-4">
                 {mockPayments.map((payment) => (
                   <div

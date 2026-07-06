@@ -66,5 +66,25 @@ export const storage = {
       }
     }
     return drafts;
+  },
+
+  // Save subscription status
+  saveSubscription: (active: boolean, expiresAt: string) => {
+    localStorage.setItem('sub_active', active ? 'true' : 'false');
+    localStorage.setItem('sub_expires_at', expiresAt);
+  },
+
+  // Load subscription status
+  loadSubscription: (): { active: boolean; expiresAt: string | null } => {
+    const active = localStorage.getItem('sub_active') === 'true';
+    const expiresAt = localStorage.getItem('sub_expires_at');
+    if (active && expiresAt) {
+      const expDate = new Date(expiresAt);
+      if (new Date() > expDate) {
+        localStorage.setItem('sub_active', 'false');
+        return { active: false, expiresAt };
+      }
+    }
+    return { active, expiresAt };
   }
 };

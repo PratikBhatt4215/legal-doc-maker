@@ -8,9 +8,9 @@ import {
   updateProfile
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../../lib/firebase';
+import { auth, db, isFirebaseConfigured } from '../../lib/firebase';
 import { storage } from '../../lib/storage';
-import { MESSAGES, getAuthErrorMessage } from '../../lib/messages';
+import { MESSAGES, MESSAGES_HI, getAuthErrorMessage } from '../../lib/messages';
 
 interface LoginSignupProps {
   onLogin: (userId: string, userData: any) => void;
@@ -27,6 +27,11 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
     email: "",
     password: ""
   });
+  const [language] = useState<"en" | "hi">(() => {
+    return (storage.loadLanguage() as "en" | "hi") || "hi";
+  });
+  const M = language === "hi" ? MESSAGES_HI.loginScreen : MESSAGES.loginScreen;
+  const M_auth = language === "hi" ? MESSAGES_HI.auth : MESSAGES.auth;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,7 +99,7 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
       }
     } catch (error: any) {
       console.error('Firebase Auth error:', error.code, error.message);
-      const friendlyMsg = getAuthErrorMessage(error.code);
+      const friendlyMsg = getAuthErrorMessage(error.code, language);
       // Show code alongside message so we can diagnose unknown errors
       const debugCode = error.code ? ` [${error.code}]` : '';
       setError(friendlyMsg + debugCode);
@@ -105,7 +110,7 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
 
   const handleForgotPassword = async () => {
     if (!formData.email.trim()) {
-      setError(MESSAGES.auth.emailRequired);
+      setError(M_auth.emailRequired);
       return;
     }
 
@@ -114,10 +119,10 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
 
     try {
       await sendPasswordResetEmail(auth, formData.email.trim());
-      alert(MESSAGES.auth.passwordResetSent);
+      alert(M_auth.passwordResetSent);
     } catch (error: any) {
       console.error('Password reset error:', error.code, error.message);
-      setError(getAuthErrorMessage(error.code));
+      setError(getAuthErrorMessage(error.code, language));
     } finally {
       setLoading(false);
     }
@@ -127,8 +132,6 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
     setIsLogin(!isLogin);
     setError("");
   };
-
-  const M = MESSAGES.loginScreen;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex flex-col items-center justify-center px-4 py-8">

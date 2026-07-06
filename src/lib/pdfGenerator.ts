@@ -1,8 +1,7 @@
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
-import { Filesystem, Directory } from '@capacitor/filesystem';
-import { Share } from '@capacitor/share';
 import { Capacitor } from '@capacitor/core';
+import { Share } from '@capacitor/share';
+import NativePdfExporter from './nativePdfExporterPlugin';
+import legalDocumentCss from '../styles/legal-document.css?inline';
 
 export type PaperSize = 'a4' | 'legal';
 
@@ -10,115 +9,154 @@ export interface PDFOptions {
   elementId: string;
   filename: string;
   paperSize: PaperSize;
+  pagesToExport?: number[];
   onSuccess?: () => void;
   onError?: (error: any) => void;
 }
 
-// Paper dimensions in mm
-const PAPER_SIZES: Record<PaperSize, [number, number]> = {
-  a4:    [210, 297],
-  legal: [216, 356],
-};
+/**
+ * Builds a clean, self-contained HTML string from the rendered document.
+ */
+function buildHtmlString(options: PDFOptions): string {
+  const container = document.getElementById(options.elementId);
+  if (!container) throw new Error('Editor element not found');
 
-export const generatePDF = async (options: PDFOptions) => {
-  try {
-    const container = document.getElementById(options.elementId);
-    if (!container) throw new Error('Editor element not found');
+  const clone = container.cloneNode(true) as HTMLElement;
 
-    const [pdfW, pdfH] = PAPER_SIZES[options.paperSize];
-
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: [pdfW, pdfH],
+  // Filter pages if requested
+  if (options.pagesToExport && options.pagesToExport.length > 0) {
+    const pages = Array.from(clone.querySelectorAll('section.docx'));
+    pages.forEach((page, index) => {
+      if (!options.pagesToExport!.includes(index)) page.remove();
     });
+  }
 
-    // Find all rendered page sections inside docx-preview wrapper
-    const pages = container.querySelectorAll('.docx-wrapper > section, .docx');
-
-    if (pages.length > 0) {
-      // ── Page-by-Page Rendering ──
-      // This preserves exact page boundaries from the Word template!
-      for (let i = 0; i < pages.length; i++) {
-        const pageEl = pages[i] as HTMLElement;
-        if (i > 0) pdf.addPage([pdfW, pdfH]);
-
-        const canvas = await html2canvas(pageEl, {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          backgroundColor: '#ffffff',
-          width: pageEl.offsetWidth,
-          height: pageEl.offsetHeight,
-        });
-
-        const imgData = canvas.toDataURL('image/png');
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
-      }
+  // Strip UI-only elements
+  clone.querySelectorAll('.margin-ruler-container').forEach(el => el.remove());
+  clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+  clone.querySelectorAll('.legal-conditional-space').forEach(el => {
+    el.parentNode?.replaceChild(document.createTextNode(' '), el);
+  });
+  clone.querySelectorAll('.legal-editable-field').forEach((el: any) => {
+    const text = (el.textContent || '').replace(/\u200B/g, '').trim();
+    if (text === '') {
+      el.textContent = '';
     } else {
-      // Fallback: Capture the entire element and slice it (if not using docx-preview sections)
-      const canvas = await html2canvas(container, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        windowWidth: container.scrollWidth,
-        windowHeight: container.scrollHeight,
-      });
-
-      const imgData = canvas.toDataURL('image/png');
-      const imgWidth = pdfW;
-      const imgHeight = (canvas.height * pdfW) / canvas.width;
-
-      let yOffset = 0;
-      let remaining = imgHeight;
-
-      while (remaining > 0) {
-        if (yOffset > 0) pdf.addPage([pdfW, pdfH]);
-        pdf.addImage(imgData, 'PNG', 0, -yOffset, imgWidth, imgHeight);
-        yOffset += pdfH;
-        remaining -= pdfH;
-      }
+      el.className = '';
+      el.removeAttribute('style');
     }
+  });
 
-    // Sanitize filename for mobile OS safety (avoid spaces, non-ASCII/Hindi chars, special symbols)
-    let safeFilename = options.filename
-      .replace(/[^\x00-\x7F]/g, "") // Remove non-ASCII (Devanagari, etc.)
-      .replace(/[\s\(\)\[\]\{\}\<\>\\\/\|\:\*\?\"\'\`,;]/g, "_") // Replace spaces and special characters with underscores
-      .replace(/_+/g, "_"); // Collapse multiple underscores
-    
-    if (!safeFilename.toLowerCase().endsWith('.pdf')) {
-      safeFilename += '.pdf';
-    }
-    if (safeFilename === '.pdf' || safeFilename.length <= 4) {
-      safeFilename = `legal_document_${Date.now()}.pdf`;
-    }
+  const isLegal = options.paperSize === 'legal';
+  const pageSizeCss = isLegal ? '8.5in 14in' : 'A4 portrait';
 
-    // ── NATIVE SAVING/SHARING ON MOBILE ──
+  // Full styles — safe since we write to a file, not through the bridge
+  const docxStyles = Array.from(document.querySelectorAll('style'))
+    .map(s => s.textContent ?? '')
+    .filter(css => css.includes('.docx') || css.includes('docx-preview'))
+    .join('\n');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${options.filename}</title>
+  <style>
+    ${docxStyles}
+    ${legalDocumentCss}
+    @page { size: ${pageSizeCss}; margin: 1in; }
+    html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+    .docx-wrapper {
+      display: block !important;
+      background: #fff !important; padding: 0 !important;
+      margin: 0 !important; visibility: visible !important;
+    }
+    .docx-wrapper * { visibility: visible !important; }
+    .docx-wrapper > section.docx {
+      box-shadow: none !important; border: none !important;
+      background: #fff !important; margin: 0 !important;
+      page-break-after: always !important; break-after: page !important;
+    }
+    .docx-wrapper > section.docx:last-child {
+      page-break-after: avoid !important; break-after: avoid !important;
+    }
+    .no-print, .margin-ruler-container { display: none !important; }
+  </style>
+</head>
+<body>${clone.innerHTML}</body>
+</html>`;
+}
+
+/**
+ * Native Android:
+ * 1. Writes the full HTML to a cache file using @capacitor/filesystem
+ *    (avoids the Capacitor JS bridge size limit — only the tiny file path is sent to Java)
+ * 2. Java plugin reads the file, loads it in a hidden WebView, and renders to PDF silently.
+ */
+async function generatePDFNative(options: PDFOptions): Promise<void> {
+  const container = document.getElementById(options.elementId);
+  if (!container) throw new Error('Editor element not found');
+
+  let pageCount = container.querySelectorAll('section.docx').length;
+  if (options.pagesToExport && options.pagesToExport.length > 0) {
+    pageCount = options.pagesToExport.length;
+  }
+
+  const html = buildHtmlString(options);
+
+  console.log('[PDF] Exporting HTML natively using NativePdfExporter:', options.filename, 'pageCount:', pageCount);
+
+  const result = await NativePdfExporter.export({
+    html,
+    filename: options.filename,
+    paperSize: options.paperSize,
+    pageCount,
+  });
+
+  console.log('[PDF] Native export complete. Saved to:', result.downloadPath, 'path:', result.path);
+
+  // Trigger native share dialog to allow sharing via WhatsApp, email, etc.
+  try {
+    const fileUrl = result.path.startsWith('file://') ? result.path : `file://${result.path}`;
+    await Share.share({
+      title: options.filename,
+      url: fileUrl,
+      dialogTitle: 'Share PDF Document',
+    });
+  } catch (shareError) {
+    console.error('[PDF] Sharing failed:', shareError);
+  }
+
+  options.onSuccess?.();
+}
+
+/**
+ * Web fallback — opens a print dialog in the browser.
+ */
+function generatePDFWeb(options: PDFOptions): void {
+  const html = buildHtmlString(options);
+  const win = window.open('', '_blank');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => {
+      win.print();
+      win.close();
+      options.onSuccess?.();
+    }, 300);
+  }
+}
+
+export const generatePDF = async (options: PDFOptions): Promise<void> => {
+  try {
     if (Capacitor.isNativePlatform()) {
-      const pdfBase64 = pdf.output('datauristring').split(',')[1];
-      
-      const fileResult = await Filesystem.writeFile({
-        path: safeFilename,
-        data: pdfBase64,
-        directory: Directory.Cache, // Temp directory on device
-      });
-
-      await Share.share({
-        title: 'Drafted Legal Document',
-        text: 'Here is your drafted legal document.',
-        url: fileResult.uri,
-        dialogTitle: 'Save/Share PDF',
-      });
-
-      options.onSuccess?.();
+      await generatePDFNative(options);
     } else {
-      // Browser fallback (PC/Mac)
-      pdf.save(safeFilename);
-      options.onSuccess?.();
+      generatePDFWeb(options);
     }
   } catch (error) {
-    console.error('PDF generation error:', error);
+    console.error('[PDF] generation error:', error);
     options.onError?.(error);
   }
 };

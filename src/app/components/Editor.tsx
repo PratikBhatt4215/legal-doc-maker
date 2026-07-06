@@ -1,25 +1,305 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as docx from "docx-preview";
-import { Download, Loader2, Eye, FileText, X, Printer, Mic, MicOff, Bold, Underline, AlignCenter, AlignJustify, Table, Ruler, BetweenHorizontalStart, RotateCcw } from "lucide-react";
+import { Download, Loader2, Eye, FileText, X, Printer, Mic, MicOff, Bold, Underline, AlignCenter, AlignJustify, Table, Ruler, BetweenHorizontalStart, RotateCcw, Trash, Plus, Minus, Rows3, Columns3, Save, Undo2, ArrowRightToLine } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { storage } from "../../lib/storage";
 import { toast } from "sonner";
 import { TopNavBar } from "./TopNavBar";
+import { saveDraft } from "../../lib/draftStorage";
 import { getTemplateById } from "../../lib/templateRegistry";
 import { generatePDF, type PaperSize } from "../../lib/pdfGenerator";
+import { savePDFExport } from "../../lib/pdfStorage";
 import "../../styles/legal-document.css";
 
 interface EditorProps {
   formId: string;
+  initialContent?: string;  // when opening a saved draft
+  draftId?: string;         // when overwriting an existing draft
+  customFile?: File | Blob;
+  customFileName?: string;
   onBack: () => void;
   onExportPDF: (onSuccess: () => void) => void;
 }
 
 const A4_W = 794;
 
+function wireEditableField(span: HTMLElement) {
+  if ((span as any)._wired) return;
+  (span as any)._wired = true;
+
+  span.contentEditable = "true";
+  span.setAttribute("spellcheck", "false");
+
+  // Initialize classes based on actual content (handles restored drafts and paginated fields)
+  const isTdField = span.classList.contains("td-field");
+  const currentText = span.textContent || "";
+  if (isTdField) {
+    if (currentText.length > 0 && currentText !== span.dataset.placeholder) {
+      span.classList.remove("is-empty");
+      span.classList.add("has-value");
+    } else {
+      span.classList.add("is-empty");
+      span.classList.remove("has-value");
+    }
+  } else {
+    const text = currentText.replace(/\u200B/g, "").trim();
+    const hasText = text.length > 0;
+    span.classList.toggle("is-empty", !hasText);
+    span.classList.toggle("has-value", hasText);
+  }
+
+  span.addEventListener("paste", e => {
+    e.preventDefault();
+    toast.error("Pasting is restricted inside the editor.");
+  });
+
+  span.addEventListener("focus", () => {
+    const sel = window.getSelection();
+    if (sel) {
+      // Small defer so Android keyboard has time to register the focus
+      requestAnimationFrame(() => {
+        const range = document.createRange();
+        let textNode = span.firstChild;
+        if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+          textNode = document.createTextNode("");
+          span.innerHTML = "";
+          span.appendChild(textNode);
+        }
+        range.setStart(textNode, textNode.textContent?.length || 0);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      });
+    }
+  });
+
+  span.addEventListener("blur", () => {
+    const isTdField = span.classList.contains("td-field");
+    const currentText = (span.textContent || "").trim();
+    if (isTdField) {
+      if (currentText === "") {
+        span.textContent = "";
+        span.classList.add("is-empty");
+        span.classList.remove("has-value");
+      }
+    } else {
+      if (currentText === "") {
+        span.textContent = ""; // Truly empty — CSS ::before handles placeholder look
+        span.classList.add("is-empty");
+        span.classList.remove("has-value");
+      }
+    }
+  });
+
+  span.addEventListener("input", () => {
+    const isTdField = span.classList.contains("td-field");
+    const currentText = (span.textContent || "").trim();
+    const hasText = currentText.length > 0;
+    span.classList.toggle("is-empty", !hasText);
+    span.classList.toggle("has-value", hasText);
+    if (isTdField && !hasText) {
+      span.textContent = "";
+    }
+  });
+
+  span.addEventListener("keydown", (e: KeyboardEvent) => {
+    if (e.key === "Backspace") {
+      const isTdField = span.classList.contains("td-field");
+      if (!isTdField) {
+        const text = (span.textContent || "").replace(/\u200B/g, "");
+        if (text === "") {
+          e.preventDefault();
+          const parent = span.parentNode;
+          if (parent) {
+            let prev = span.previousSibling;
+            if (!prev) {
+              prev = document.createTextNode("");
+              parent.insertBefore(prev, span);
+            }
+            span.remove(); // Remove empty field span from DOM
+            const range = document.createRange();
+            const sel = window.getSelection();
+            if (sel) {
+              if (prev.nodeType === Node.TEXT_NODE) {
+                range.setStart(prev, prev.textContent?.length || 0);
+              } else {
+                range.setStartAfter(prev);
+              }
+              range.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(range);
+            }
+          }
+        }
+      }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+    }
+  });
+}
+
+function mergeAdjacentDotTextNodes(container: HTMLElement): void {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  let n: Node | null;
+  while ((n = walker.nextNode())) {
+    textNodes.push(n as Text);
+  }
+
+  // Improved dot character test including spaces and non-breaking spaces
+  const isDotChar = (char: string) => /^[.…_\s\u00A0]$/.test(char);
+
+  for (let i = textNodes.length - 1; i > 0; i--) {
+    const current = textNodes[i];
+    const prev = textNodes[i - 1];
+
+    const currentText = current.textContent || "";
+    const prevText = prev.textContent || "";
+
+    const currentIsDot = currentText.length > 0 && Array.from(currentText).every(isDotChar);
+    const prevIsDot = prevText.length > 0 && Array.from(prevText).every(isDotChar);
+
+    if (currentIsDot && prevIsDot) {
+      const hasActualDots = /[.…_]/.test(currentText) || /[.…_]/.test(prevText);
+      if (hasActualDots) {
+        const p1 = current.parentElement?.closest("p, div, td, li, article");
+        const p2 = prev.parentElement?.closest("p, div, td, li, article");
+        if (p1 && p1 === p2) {
+          prev.textContent = prevText + currentText;
+          
+          const parent = current.parentNode;
+          current.remove();
+          
+          let ancestor = parent;
+          while (ancestor && ancestor !== container && ancestor.childNodes.length === 0) {
+            const nextAncestor = ancestor.parentNode;
+            ancestor.remove();
+            ancestor = nextAncestor;
+          }
+        }
+      }
+    }
+  }
+}
+
+function mergeAdjacentFields(container: HTMLElement): void {
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const fields = Array.from(container.querySelectorAll(".legal-editable-field")) as HTMLSpanElement[];
+    for (let i = 0; i < fields.length - 1; i++) {
+      const current = fields[i];
+      const next = fields[i + 1];
+
+      // Check if they are inside the same block container (like a paragraph, table cell, or section)
+      const p1 = current.closest("p, td, li, div");
+      const p2 = next.closest("p, td, li, div");
+      if (p1 && p1 === p2) {
+        try {
+          const range = document.createRange();
+          range.setStartAfter(current);
+          range.setEndBefore(next);
+          const textBetween = range.toString().trim().replace(/\u00A0/g, "").replace(/\s+/g, "");
+
+          if (textBetween === "") {
+            // Merging next into current!
+            const ph1 = current.dataset.placeholder || "";
+            const ph2 = next.dataset.placeholder || "";
+            current.dataset.placeholder = ph1 + ph2;
+
+            current.textContent = (current.textContent || "") + (next.textContent || "");
+
+            // Re-initialize class values properly
+            const text = current.textContent.replace(/\u200B/g, "").trim();
+            const hasText = text.length > 0;
+            current.classList.toggle("is-empty", !hasText);
+            current.classList.toggle("has-value", hasText);
+
+            next.parentNode?.removeChild(next);
+            changed = true;
+            break;
+          }
+        } catch (rangeErr) {
+          console.error("Range merge error:", rangeErr);
+        }
+      }
+    }
+  }
+}
+
+function mergeAdjacentPlaceholderSpans(container: HTMLElement): void {
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const spans = Array.from(container.querySelectorAll("span"));
+    for (let i = 0; i < spans.length - 1; i++) {
+      const current = spans[i];
+      const next = spans[i + 1];
+      if (!current.parentNode || !next.parentNode) continue;
+      if (current.parentNode !== next.parentNode) continue; // direct siblings
+
+      const t1 = current.textContent || "";
+      const t2 = next.textContent || "";
+      
+      const isPlaceholder1 = /^[.…_\s\u00A0]*$/.test(t1) && t1.trim().length > 0;
+      const isPlaceholder2 = /^[.…_\s\u00A0]*$/.test(t2) && t2.trim().length > 0;
+
+      if (isPlaceholder1 && isPlaceholder2) {
+        current.textContent = t1 + t2;
+        next.remove();
+        changed = true;
+        break;
+      }
+    }
+  }
+}
+
 function injectAndWire(container: HTMLElement): void {
-  const dotPattern = /([.…]{4,}|_{4,})/g;
-  const testPattern = /([.…]{4,}|_{4,})/; // stateless non-global pattern to prevent lastIndex bug!
+  // Merge fragmented placeholder spans first so they form a single field
+  mergeAdjacentPlaceholderSpans(container);
+
+  // Convert spaces-only styled underlines (from MS Word templates) to editable fields
+  container.querySelectorAll("span").forEach(span => {
+    if (span.classList.contains("legal-editable-field")) return;
+
+    const style = span.getAttribute("style") || "";
+    const hasDottedUnderline = /text-decoration|border-bottom/i.test(style) && /dot|dash|underline/i.test(style);
+    const hasUnderlineClass = Array.from(span.classList).some(c => /underline|border/i.test(c));
+
+    if (hasDottedUnderline || hasUnderlineClass) {
+      const text = (span.textContent || "").replace(/\u200B/g, "");
+      // If the span contains only spaces, dots, or underscores, and is at least 3 characters long
+      if (/^[.…_\s\u00A0]*$/.test(text) && text.length >= 3) {
+        span.className = "legal-editable-field is-empty";
+        span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        span.dataset.placeholder = text;
+        span.textContent = ""; // Truly empty — CSS ::before handles placeholder underline
+        
+        // Strip the underline/border styles from this span and ALL wrapper ancestors
+        span.style.textDecoration = "none";
+        span.style.borderBottom = "";
+
+        let ancestor = span.parentNode;
+        while (ancestor && ancestor.nodeType === Node.ELEMENT_NODE && ancestor !== container) {
+          const el = ancestor as HTMLElement;
+          if (el.tagName === "ARTICLE") break;
+          el.style.textDecoration = "none";
+          el.style.borderBottom = "none";
+          el.classList.remove("docx-underline");
+          ancestor = ancestor.parentNode;
+        }
+      }
+    }
+  });
+
+  // Merge fragmented dotted line elements first
+  mergeAdjacentDotTextNodes(container);
+
+  // Normalize the container first to merge any adjacent text nodes.
+  container.normalize();
+
+  const dotPattern = /((?:\.[ \u00A0]*){3,}|(?:\u2026[ \u00A0]*){3,}|(?:_[ \u00A0]*){3,})/g;
+  const testPattern = /((?:\.[ \u00A0]*){3,}|(?:\u2026[ \u00A0]*){3,}|(?:_[ \u00A0]*){3,})/; // stateless non-global pattern to prevent lastIndex bug!
 
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
@@ -41,23 +321,34 @@ function injectAndWire(container: HTMLElement): void {
     if (!parent) return;
     const text = textNode.textContent || "";
     dotPattern.lastIndex = 0;
-    const parts = text.split(/((?:[.…]{4,}|_{4,}))/g);
+    const parts = text.split(dotPattern);
     if (parts.length <= 1) return;
 
     const frag = document.createDocumentFragment();
 
     parts.forEach((part, partIdx) => {
-      if (/^(?:[.…]{4,}|_{4,})$/.test(part)) {
+      const isBlankField = /^(?:\.[ \u00A0]*){3,}$|^(?:\u2026[ \u00A0]*){3,}$|^(?:_[ \u00A0]*){3,}$/.test(part);
+      if (isBlankField) {
         const span = document.createElement("span");
         const isInTable = parent && typeof (parent as any).closest === "function"
           ? (parent as any).closest("table") !== null
           : false;
         span.className = isInTable ? "legal-editable-field is-empty td-field" : "legal-editable-field is-empty";
-        // NO contentEditable on span — the parent article handles all editing.
-        // Span is just a visual decoration (dotted underline) inside the editable article.
         span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         span.dataset.placeholder = isInTable ? "" : part;
-        span.textContent = "";
+        span.textContent = ""; // Truly empty — CSS ::before handles placeholder underline
+
+        // Strip text-decoration and borders from all wrapper ancestors up the tree
+        let ancestor = parent;
+        while (ancestor && ancestor.nodeType === Node.ELEMENT_NODE && ancestor !== container) {
+          const el = ancestor as HTMLElement;
+          if (el.tagName === "ARTICLE") break;
+          el.style.textDecoration = "none";
+          el.style.borderBottom = "none";
+          el.style.borderBottomWidth = "0px";
+          el.classList.remove("docx-underline");
+          ancestor = ancestor.parentNode;
+        }
 
         // Dynamic min-width so each dotted field has an appropriate visible width
         if (!isInTable) {
@@ -114,96 +405,29 @@ function injectAndWire(container: HTMLElement): void {
       td.innerHTML = "";
       const span = document.createElement("span");
       span.className = "legal-editable-field is-empty td-field";
-      span.contentEditable = "true";
       span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
       span.dataset.placeholder = "";
       span.textContent = "";
-      span.setAttribute("spellcheck", "false");
-
-      span.addEventListener("paste", e => {
-        e.preventDefault();
-        const pastedText = e.clipboardData?.getData("text/plain") || "";
-        document.execCommand("insertText", false, pastedText);
-      });
-
-      span.addEventListener("focus", () => {
-        if (span.classList.contains("is-empty")) {
-          span.textContent = "";
-          span.classList.remove("is-empty");
-        }
-      });
-
-      span.addEventListener("blur", () => {
-        const currentText = span.textContent || "";
-        if (currentText.trim() === "") {
-          span.textContent = span.dataset.placeholder || "";
-          span.classList.add("is-empty");
-          span.classList.remove("has-value");
-        }
-      });
-
-      span.addEventListener("input", () => {
-        const currentText = span.textContent || "";
-        if (currentText.length > 0 && currentText !== span.dataset.placeholder) {
-          span.classList.remove("is-empty");
-          span.classList.add("has-value");
-        } else {
-          span.classList.add("is-empty");
-          span.classList.remove("has-value");
-        }
-      });
       td.appendChild(span);
     }
   });
 
   // Merge adjacent editable fields to avoid multiple inputs for a single dotted line!
-  let changed = true;
-  while (changed) {
-    changed = false;
-    const fields = Array.from(container.querySelectorAll(".legal-editable-field")) as HTMLSpanElement[];
-    for (let i = 0; i < fields.length - 1; i++) {
-      const current = fields[i];
-      const next = fields[i + 1];
+  mergeAdjacentFields(container);
 
-      // Check if they are inside the same block container (like a paragraph, table cell, or section)
-      const p1 = current.closest("p, td, li, div");
-      const p2 = next.closest("p, td, li, div");
-      if (p1 && p1 === p2) {
-        try {
-          const range = document.createRange();
-          range.setStartAfter(current);
-          range.setEndBefore(next);
-          const textBetween = range.toString().trim().replace(/\u00A0/g, "").replace(/\s+/g, "");
+  // Wire up all editable fields (both existing/restored and newly created)
+  container.querySelectorAll(".legal-editable-field").forEach(field => {
+    wireEditableField(field as HTMLElement);
+  });
 
-          if (textBetween === "") {
-            // Merging next into current!
-            const ph1 = current.dataset.placeholder || "";
-            const ph2 = next.dataset.placeholder || "";
-            current.dataset.placeholder = ph1 + ph2;
-
-            current.textContent = (current.textContent || "") + (next.textContent || "");
-
-            if ((current.textContent || "").trim().length > 0) {
-              current.classList.remove("is-empty");
-              current.classList.add("has-value");
-            } else {
-              current.classList.add("is-empty");
-              current.classList.remove("has-value");
-            }
-
-            next.parentNode?.removeChild(next);
-            changed = true;
-            break;
-          }
-        } catch (rangeErr) {
-          console.error("Range merge error:", rangeErr);
-        }
-      }
-    }
-  }
+  // Lock the document to prevent copying, cutting, and pasting
+  lockDocument(container);
 }
 
 function lockDocument(container: HTMLElement) {
+  if ((container as any)._locked) return;
+  (container as any)._locked = true;
+
   container.addEventListener("contextmenu", e => e.preventDefault());
   container.addEventListener("selectstart", e => {
     const target = e.target as HTMLElement;
@@ -211,11 +435,20 @@ function lockDocument(container: HTMLElement) {
       e.preventDefault();
     }
   });
+  
   container.addEventListener("copy", e => {
-    const target = e.target as HTMLElement;
-    if (target && !target.isContentEditable && typeof target.closest === "function" && !target.closest("[contenteditable='true']")) {
-      e.preventDefault();
-    }
+    e.preventDefault();
+    toast.error("Copying is restricted inside the editor.");
+  });
+
+  container.addEventListener("cut", e => {
+    e.preventDefault();
+    toast.error("Cutting is restricted inside the editor.");
+  });
+
+  container.addEventListener("paste", e => {
+    e.preventDefault();
+    toast.error("Pasting is restricted inside the editor.");
   });
 }
 
@@ -230,18 +463,73 @@ function schedulePagination(container: HTMLElement) {
 }
 
 function breakPagesDynamically(container: HTMLElement) {
-  const sections = Array.from(container.querySelectorAll(".docx-wrapper > section.docx, section.docx")) as HTMLElement[];
-  for (let i = 0; i < sections.length; i++) {
-    paginateSection(sections[i]);
+  // Remove all previously-split sections first so we re-paginate from scratch
+  // (keeps only the first section per original docx page wrapper)
+  const allSections = Array.from(
+    container.querySelectorAll(".docx-wrapper > section.docx, section.docx")
+  ) as HTMLElement[];
+
+  // Collect only "original" sections (those without data-split marker)
+  const originalSections: HTMLElement[] = [];
+  for (const sec of allSections) {
+    if (sec.dataset.split === "1") {
+      // Merge its article children back into the previous original section's article before removing
+      const prevOrig = originalSections[originalSections.length - 1];
+      if (prevOrig) {
+        const prevArticle = prevOrig.querySelector("article");
+        const thisArticle = sec.querySelector("article");
+        if (prevArticle && thisArticle) {
+          while (thisArticle.firstChild) {
+            prevArticle.appendChild(thisArticle.firstChild);
+          }
+        }
+      }
+      sec.remove();
+    } else {
+      originalSections.push(sec);
+    }
   }
+
+  // Now paginate each original section fresh
+  for (const sec of originalSections) {
+    paginateSection(sec);
+  }
+}
+
+// A4 page usable height in CSS pixels at 96dpi (≈ 297mm → 1122px) minus top+bottom padding (96px)
+const A4_CONTENT_HEIGHT_PX = 1026;
+
+function hasPageBreak(el: HTMLElement): boolean {
+  if (!el) return false;
+  if (el.classList.contains("docx-page-break") || el.classList.contains("last-rendered-page-break")) return true;
+  if (el.tagName === "BR" && (el.style.pageBreakBefore === "always" || el.style.pageBreakAfter === "always")) return true;
+  
+  const style = el.style;
+  if (style.pageBreakBefore === "always" || style.breakBefore === "page" || style.pageBreakAfter === "always" || style.breakAfter === "page") {
+    return true;
+  }
+  
+  if (el.querySelector(".docx-page-break") || el.querySelector(".last-rendered-page-break")) return true;
+  
+  const innerBrs = el.querySelectorAll("br, span, div, p");
+  for (let i = 0; i < innerBrs.length; i++) {
+    const item = innerBrs[i] as HTMLElement;
+    if (item.classList.contains("docx-page-break") || item.classList.contains("last-rendered-page-break")) return true;
+    if (item.style.pageBreakBefore === "always" || item.style.pageBreakAfter === "always" || item.style.breakBefore === "page" || item.style.breakAfter === "page") {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function paginateSection(section: HTMLElement) {
   const article = section.querySelector("article");
   if (!article) return;
 
-  const pageRect = section.getBoundingClientRect();
-  const maxBottom = pageRect.top + 1070;
+  // Use offsetTop of article relative to the section for layout-accurate (unscaled) measurements
+  const articleOffsetTop = (article as HTMLElement).offsetTop || 0;
+  const maxBottom = articleOffsetTop + A4_CONTENT_HEIGHT_PX;
 
   const children = Array.from(article.children) as HTMLElement[];
   let splitIndex = -1;
@@ -251,12 +539,16 @@ function paginateSection(section: HTMLElement) {
 
   for (let j = 0; j < children.length; j++) {
     const child = children[j];
-    const rect = child.getBoundingClientRect();
+    // Use offsetTop + offsetHeight (layout-relative, unaffected by CSS transform)
+    const childBottom = child.offsetTop + child.offsetHeight;
 
-    if (rect.height === 0) continue;
+    if (child.offsetHeight === 0) continue;
 
-    if (rect.bottom > maxBottom) {
-      if (!hasKeptSomething) {
+    // Detect manual page breaks (only if it is not the very first element on the page)
+    const isManualBreak = j > 0 && hasPageBreak(child);
+
+    if (isManualBreak || childBottom > maxBottom) {
+      if (!hasKeptSomething && !isManualBreak) {
         hasKeptSomething = true;
         continue;
       }
@@ -264,12 +556,13 @@ function paginateSection(section: HTMLElement) {
       if (child.tagName === "TABLE") {
         const table = child as HTMLTableElement;
         const rows = Array.from(table.querySelectorAll("tr")) as HTMLTableRowElement[];
+        const tableOffsetTop = table.offsetTop;
         let keptRow = false;
 
         for (let r = 0; r < rows.length; r++) {
           const row = rows[r];
-          const rowRect = row.getBoundingClientRect();
-          if (rowRect.bottom > maxBottom) {
+          const rowBottom = tableOffsetTop + row.offsetTop + row.offsetHeight;
+          if (rowBottom > maxBottom) {
             if (!keptRow) {
               keptRow = true;
               continue;
@@ -295,9 +588,12 @@ function paginateSection(section: HTMLElement) {
 
   if (splitIndex !== -1) {
     const newSection = section.cloneNode(true) as HTMLElement;
+    newSection.dataset.split = "1"; // mark as a split page
     const newArticle = newSection.querySelector("article");
+    newSection.innerHTML = ""; // Strip any duplicated sibling elements outside article to fix floating ghost boxes
     if (newArticle) {
       newArticle.innerHTML = "";
+      newSection.appendChild(newArticle);
     }
 
     section.parentNode?.insertBefore(newSection, section.nextSibling);
@@ -338,24 +634,39 @@ function paginateSection(section: HTMLElement) {
   }
 }
 
-function PaperSizeModal({ onSelect, onCancel }: { onSelect: (s: PaperSize) => void; onCancel: () => void }) {
+function PaperSizeModal({ onSelect, onCancel }: { onSelect: (s: PaperSize, p?: string) => void; onCancel: () => void }) {
+  const [pages, setPages] = useState("");
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-[#1e3a5f]">Select Paper Size</h2>
+          <p className="text-2xl mb-1 opacity-90">Welcome to</p>
+          <h2 className="text-2xl font-bold">Legal Docs Maker</h2>
           <button onClick={onCancel} className="p-2 hover:bg-gray-100 rounded-full"><X className="w-5 h-5 text-gray-500" /></button>
         </div>
+        
+        <div className="mb-6">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">Pages to Export (Optional)</label>
+          <input 
+            type="text" 
+            placeholder="e.g. 1, 2-5, or leave empty for all" 
+            value={pages}
+            onChange={(e) => setPages(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:border-[#1e3a5f]"
+          />
+          <p className="text-xs text-gray-400 mt-1">Leave empty to export all pages.</p>
+        </div>
+
         <div className="space-y-3">
-          <button onClick={() => onSelect("a4")} className="w-full flex items-center gap-4 p-4 border-2 border-gray-200 hover:border-[#1e3a5f] rounded-2xl transition-all group">
+          <button onClick={() => onSelect("a4", pages)} className="w-full flex items-center gap-4 p-4 border-2 border-gray-200 hover:border-[#1e3a5f] rounded-2xl transition-all group">
             <div className="w-10 h-14 border-2 border-gray-300 group-hover:border-[#1e3a5f] rounded flex items-center justify-center bg-gray-50 flex-shrink-0">
               <Printer className="w-5 h-5 text-gray-400 group-hover:text-[#1e3a5f]" />
             </div>
             <div className="text-left"><p className="font-bold text-[#1e3a5f]">A4 Size</p><p className="text-sm text-gray-500">210 × 297 mm</p></div>
           </button>
-          <button onClick={() => onSelect("legal")} className="w-full flex items-center gap-4 p-4 border-2 border-gray-200 hover:border-[#9b1c31] rounded-2xl transition-all group">
+          <button onClick={() => onSelect("legal", pages)} className="w-full flex items-center gap-4 p-4 border-2 border-gray-200 hover:border-[#9b1c31] rounded-2xl transition-all group">
             <div className="w-10 h-16 border-2 border-gray-300 group-hover:border-[#9b1c31] rounded flex items-center justify-center bg-gray-50 flex-shrink-0">
               <FileText className="w-5 h-5 text-gray-400 group-hover:text-[#9b1c31]" />
             </div>
@@ -420,27 +731,29 @@ function MarginRuler({
       if (type === "left") {
         const clientX = moveEvent.clientX - rect.left;
         const localX = clientX / currentScale;
-        // Limit left margin strictly between 20px and 220px
-        const newLeft = Math.min(220, Math.max(20, Math.round(localX)));
+        // Limit left margin between 0px and 600px
+        const newLeft = Math.min(600, Math.max(0, Math.round(localX)));
         onLeftMarginChange(newLeft);
       } else {
         const clientX = rect.right - moveEvent.clientX;
         const localX = clientX / currentScale;
-        // Limit right margin strictly between 20px and 220px
-        const newRight = Math.min(220, Math.max(20, Math.round(localX)));
+        // Limit right margin between 0px and 600px
+        const newRight = Math.min(600, Math.max(0, Math.round(localX)));
         onRightMarginChange(newRight);
       }
     };
 
     const onPointerUp = (upEvent: PointerEvent) => {
-      handle.releasePointerCapture(upEvent.pointerId);
+      try { handle.releasePointerCapture(upEvent.pointerId); } catch(e){}
       isDraggingRef.current = false; // Re-enable panning
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
     };
 
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
   };
 
   return (
@@ -507,6 +820,10 @@ function useTouchPanZoom(
     let lastTime = 0;
     let rafId = 0;
 
+    let cachedViewportW = 0;
+    let cachedViewportH = 0;
+    let cachedContentH = 0;
+
     function dist(t1: { x: number, y: number }, t2: { x: number, y: number }) {
       return Math.hypot(t2.x - t1.x, t2.y - t1.y);
     }
@@ -515,10 +832,10 @@ function useTouchPanZoom(
     }
 
     function clampPosition(x: number, y: number, scale: number) {
-      const vw = viewport!.clientWidth;
-      const vh = viewport!.clientHeight;
+      const vw = cachedViewportW || viewport!.clientWidth;
+      const vh = cachedViewportH || viewport!.clientHeight;
       const scaledW = A4_W * scale;
-      const scaledH = content!.scrollHeight * scale;
+      const scaledH = (cachedContentH || content!.scrollHeight) * scale;
 
       let minX = 0;
       let maxX = 0;
@@ -534,10 +851,10 @@ function useTouchPanZoom(
       let maxY = 0;
       if (scaledH > vh) {
         minY = vh - scaledH - 120; // 120px extra padding at bottom for very comfortable typing with keyboard
-        maxY = 0;
+        maxY = 40; // Allow 40px positive pull so top of page 1 is always accessible
       } else {
-        minY = 0;
-        maxY = 0;
+        minY = Math.min(0, (vh - scaledH) / 2);
+        maxY = Math.max(0, (vh - scaledH) / 2);
       }
 
       return {
@@ -546,9 +863,21 @@ function useTouchPanZoom(
       };
     }
 
+    let touchedInputField = false;
+
     function onTouchStart(e: TouchEvent) {
+      const touchTarget = e.target as HTMLElement;
+      if (touchTarget && touchTarget.closest(".legal-editable-field")) {
+        touchedInputField = true;
+        return;
+      }
+      touchedInputField = false;
       cancelAnimationFrame(rafId);
       velX = 0; velY = 0;
+      
+      cachedViewportW = viewport!.clientWidth;
+      cachedViewportH = viewport!.clientHeight;
+      cachedContentH = content!.scrollHeight;
 
       if (e.touches.length === 1) {
         const t = e.touches[0];
@@ -569,6 +898,7 @@ function useTouchPanZoom(
     }
 
     function onTouchMove(e: TouchEvent) {
+      if (touchedInputField) return;
       // 🚨 CRITICAL FIX: If we are dragging an element, completely disable background panning!
       if (isDraggingRef.current) return;
 
@@ -643,6 +973,10 @@ function useTouchPanZoom(
     }
 
     function onTouchEnd(e: TouchEvent) {
+      if (touchedInputField) {
+        if (e.touches.length === 0) touchedInputField = false;
+        return;
+      }
       if (e.touches.length === 0) {
         if (isPanning) {
           let { x, y, scale } = stateRef.current;
@@ -686,10 +1020,16 @@ function useTouchPanZoom(
       }
     }
 
+    const handleNativeScroll = (e: Event) => {
+      if (viewport.scrollTop !== 0) viewport.scrollTop = 0;
+      if (viewport.scrollLeft !== 0) viewport.scrollLeft = 0;
+    };
+
     viewport.addEventListener("touchstart", onTouchStart, { passive: false });
     viewport.addEventListener("touchmove", onTouchMove, { passive: false });
     viewport.addEventListener("touchend", onTouchEnd, { passive: true });
     viewport.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    viewport.addEventListener("scroll", handleNativeScroll, { passive: true });
 
     return () => {
       cancelAnimationFrame(rafId);
@@ -697,13 +1037,47 @@ function useTouchPanZoom(
       viewport.removeEventListener("touchmove", onTouchMove);
       viewport.removeEventListener("touchend", onTouchEnd);
       viewport.removeEventListener("touchcancel", onTouchEnd);
+      viewport.removeEventListener("scroll", handleNativeScroll);
     };
   }, [viewportRef, contentRef, applyTransform, isDraggingRef]);
 
-  return { applyTransform, stateRef };
+  const scrollToElement = useCallback((el: HTMLElement) => {
+    const viewport = viewportRef.current;
+    const content = contentRef.current;
+    if (!el || !viewport || !content) return;
+
+    let obj: HTMLElement | null = el;
+    let fieldTop = 0;
+    while (obj && obj !== content) {
+      fieldTop += obj.offsetTop;
+      obj = obj.offsetParent as HTMLElement;
+    }
+
+    const currentState = stateRef.current;
+    const targetScale = Math.max(0.85, currentState.scale);
+    const vw = viewport.clientWidth;
+    const vh = viewport.clientHeight;
+
+    const targetY = -(fieldTop * targetScale) + (vh * 0.22);
+    const targetX = (vw - A4_W * targetScale) / 2;
+
+    const scaledH = content.scrollHeight * targetScale;
+    const minY = scaledH > vh ? vh - scaledH - 120 : Math.min(0, (vh - scaledH) / 2);
+    const maxY = scaledH > vh ? 40 : Math.max(0, (vh - scaledH) / 2);
+    const clampedY = Math.min(Math.max(targetY, minY), maxY);
+
+    const scaledW = A4_W * targetScale;
+    const minX = scaledW > vw ? vw - scaledW : (vw - scaledW) / 2;
+    const maxX = scaledW > vw ? 0 : (vw - scaledW) / 2;
+    const clampedX = Math.min(Math.max(targetX, minX), maxX);
+
+    applyTransform(clampedX, clampedY, targetScale, true);
+  }, [viewportRef, contentRef, applyTransform]);
+
+  return { applyTransform, stateRef, scrollToElement };
 }
 
-export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
+export function Editor({ formId, initialContent, draftId, customFile, customFileName, onBack, onExportPDF }: EditorProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [pageCount, setPageCount] = useState(0);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
@@ -717,12 +1091,16 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
   const [showRuler, setShowRuler] = useState(true);
   const [showSpacingOptions, setShowSpacingOptions] = useState(false);
   const [globalAlign, setGlobalAlign] = useState(""); // Default "" uses template original styles
-  const [showTools, setShowTools] = useState(false);
+  const [inTableNode, setInTableNode] = useState<HTMLTableElement | null>(null);
+  const [inTableCellNode, setInTableCellNode] = useState<HTMLTableCellElement | null>(null);
   const [showTableModal, setShowTableModal] = useState(false);
-  const [tableRows, setTableRows] = useState(2);
-  const [tableCols, setTableCols] = useState(5);
-  const [resetTrigger, setResetTrigger] = useState(0);
+  const [showTableEditMenu, setShowTableEditMenu] = useState(false);
+  const [tableRows, setTableRows] = useState<string>("2");
+  const [tableCols, setTableCols] = useState<string>("5");
   const [tableFit, setTableFit] = useState("fixed");
+  const [fontSize, setFontSize] = useState<number | "">("");
+  const [focusedField, setFocusedField] = useState<HTMLElement | null>(null);
+  const [currentDraftId, setCurrentDraftId] = useState<string | undefined>(draftId);
   const [selectionFormat, setSelectionFormat] = useState({
     bold: false,
     underline: false,
@@ -736,7 +1114,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
     } catch (e) { }
   }, []);
 
-  // Track rich-text command states + selected paragraph for ruler
+  // Track rich-text command states + selected paragraph for ruler (NO table detection here)
   useEffect(() => {
     const handleSelectionChange = () => {
       try {
@@ -759,18 +1137,40 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
           const sel = window.getSelection();
           if (sel && sel.rangeCount > 0) {
             let node: Node | null = sel.getRangeAt(0).startContainer;
-            // Walk up to find the closest block element — ONLY P/H/LI, NOT DIV
-            // DIVs in docx-preview are wrapper containers that may hold many paragraphs
             while (node && node.nodeType !== Node.ELEMENT_NODE) node = node.parentNode;
             let el = node as HTMLElement | null;
             while (el && !["P", "H1", "H2", "H3", "H4", "H5", "H6", "LI"].includes(el.tagName)) {
               el = el.parentElement;
             }
-            // Only set if the found element is inside the document (not a UI button etc.)
             if (el && docxRef.current?.contains(el)) {
               selectedParaRef.current = el;
             } else {
               selectedParaRef.current = null;
+            }
+
+            // Track active editable field
+            let activeField: HTMLElement | null = null;
+            let field = node as HTMLElement | null;
+            while (field && field !== docxRef.current) {
+              if (field.classList.contains("legal-editable-field")) {
+                activeField = field;
+                break;
+              }
+              field = field.parentElement;
+            }
+            setFocusedField(activeField);
+            if (activeField) {
+              const inlineSize = activeField.style.fontSize;
+              if (inlineSize) {
+                const val = parseFloat(inlineSize);
+                if (!isNaN(val)) setFontSize(Math.round(val));
+              } else {
+                const comp = window.getComputedStyle(activeField).fontSize;
+                const px = parseFloat(comp);
+                if (!isNaN(px)) setFontSize(Math.round(px * 0.75));
+              }
+            } else {
+              setFontSize("");
             }
           }
         }
@@ -780,6 +1180,30 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
     };
     document.addEventListener("selectionchange", handleSelectionChange);
     return () => document.removeEventListener("selectionchange", handleSelectionChange);
+  }, []);
+
+  // SOLE table detection: touchend on the viewport
+  // selectionchange is NOT used for table detection at all — it caused race conditions
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target || !docxRef.current) return;
+      const tableEl = target.closest("table") as HTMLTableElement | null;
+      const tdEl = target.closest("td") as HTMLTableCellElement | null;
+      if (tableEl && docxRef.current.contains(tableEl)) {
+        setInTableNode(tableEl);
+        setInTableCellNode(tdEl);
+      } else {
+        setInTableNode(null);
+        setInTableCellNode(null);
+      }
+    };
+
+    viewport.addEventListener("touchend", handleTouchEnd, { passive: true });
+    return () => viewport.removeEventListener("touchend", handleTouchEnd);
   }, []);
 
   const [isListening, setIsListening] = useState(false);
@@ -799,15 +1223,139 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
   const selectedParaRef = useRef<HTMLElement | null>(null);
 
   const originalMarginsRef = useRef<{ left: number; right: number } | null>(null);
+  // Snapshot of the clean HTML right after first render (blank template or opened draft)
+  // Reset always restores from this — no re-fetch needed
+  const originalHtmlRef = useRef<string | null>(null);
+  const hasSnapshottedRef = useRef(false);
+  // Guard: prevent re-fetching/re-rendering the template when other state changes
+  const hasRenderedRef = useRef(false);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const docxRef = useRef<HTMLDivElement>(null);
 
+  // ── Custom Undo/Redo State Stack ───────────────────────────────────
+  const undoStackRef = useRef<string[]>([]);
+  const isRestoringRef = useRef(false);
+  const inputDebounceTimerRef = useRef<any>(null);
+
+  const saveToUndoStack = () => {
+    if (isRestoringRef.current) return;
+    const container = docxRef.current;
+    if (!container) return;
+
+    const currentHTML = container.innerHTML;
+    // Only push if different from the top of the stack
+    if (undoStackRef.current.length === 0 || undoStackRef.current[undoStackRef.current.length - 1] !== currentHTML) {
+      undoStackRef.current.push(currentHTML);
+      if (undoStackRef.current.length > 40) {
+        undoStackRef.current.shift(); // Limit history size
+      }
+    }
+  };
+
+  const handleUndo = () => {
+    const container = docxRef.current;
+    if (!container) return;
+
+    if (undoStackRef.current.length === 0) {
+      toast.info("Nothing to undo.");
+      return;
+    }
+
+    const currentHTML = container.innerHTML;
+    let previousState = undoStackRef.current.pop();
+    
+    // If the popped state is the same as the current live HTML, pop the actual previous state
+    if (previousState === currentHTML && undoStackRef.current.length > 0) {
+      previousState = undoStackRef.current.pop();
+    }
+
+    if (previousState && previousState !== currentHTML) {
+      isRestoringRef.current = true;
+      container.innerHTML = previousState;
+
+      // Re-wire all fields in the restored DOM
+      container.querySelectorAll(".legal-editable-field").forEach(field => {
+        (field as HTMLElement).dataset.wired = "1";
+        wireEditableField(field as HTMLElement);
+      });
+
+      // Recalculate margins
+      const firstSection = container.querySelector(".docx-wrapper > section.docx, section.docx") as HTMLElement;
+      if (firstSection) {
+        const computedStyle = window.getComputedStyle(firstSection);
+        const computedLeft = parseFloat(computedStyle.paddingLeft);
+        const computedRight = parseFloat(computedStyle.paddingRight);
+        if (!isNaN(computedLeft) && !isNaN(computedRight)) {
+          setLeftMargin(computedLeft);
+          setRightMargin(computedRight);
+        }
+      }
+      
+      const pc = container.querySelectorAll(".docx-wrapper > section.docx, section.docx").length || 1;
+      setPageCount(pc);
+
+      // Re-paginate
+      schedulePagination(container);
+
+      toast.success("Undone!");
+
+      setTimeout(() => {
+        isRestoringRef.current = false;
+      }, 100);
+    } else {
+      toast.info("Nothing to undo.");
+    }
+  };
+
+  const execFormatCommand = (command: string, value: string = "") => {
+    saveToUndoStack();
+    try {
+      document.execCommand(command, false, value);
+    } catch (e) {
+      console.error("Format execution error:", e);
+    }
+  };
+
   const template = getTemplateById(formId);
+  const displayName = customFile ? (customFileName || "Custom Document") : (template?.name || "Legal Document");
+  const displaySubtitle = customFile ? "Custom Uploaded File" : template?.description;
 
   // Pass the ref to the Pan/Zoom hook
-  const { applyTransform, stateRef } = useTouchPanZoom(viewportRef, contentRef, isDraggingRef);
+  const { applyTransform, stateRef, scrollToElement } = useTouchPanZoom(viewportRef, contentRef, isDraggingRef);
+
+  const getActiveFieldFontSize = (): number => {
+    if (focusedField) {
+      const inlineSize = focusedField.style.fontSize;
+      if (inlineSize) {
+        const val = parseFloat(inlineSize);
+        if (!isNaN(val)) return Math.round(val);
+      }
+      const comp = window.getComputedStyle(focusedField).fontSize;
+      const px = parseFloat(comp);
+      if (!isNaN(px)) {
+        return Math.round(px * 0.75);
+      }
+    }
+    if (typeof fontSize === "number") return fontSize;
+    const activeEl = document.activeElement as HTMLElement | null;
+    if (activeEl && activeEl.classList.contains("legal-editable-field")) {
+      const comp = window.getComputedStyle(activeEl).fontSize;
+      const px = parseFloat(comp);
+      if (!isNaN(px)) {
+        return Math.round(px * 0.75); // Convert px to pt
+      }
+    }
+    if (selectedParaRef.current) {
+      const comp = window.getComputedStyle(selectedParaRef.current).fontSize;
+      const px = parseFloat(comp);
+      if (!isNaN(px)) {
+        return Math.round(px * 0.75);
+      }
+    }
+    return 12; // default fallback
+  };
 
   useEffect(() => {
     const container = docxRef.current;
@@ -1021,6 +1569,36 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
     recognition.start();
   }, [isListening]);
 
+  // Screen Wake Lock to prevent screen sleep during active dictation (voice typing)
+  useEffect(() => {
+    let wakeLock: any = null;
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await (navigator.wakeLock as any).request('screen');
+        }
+      } catch (err) {
+        console.warn("Wake lock failed:", err);
+      }
+    }
+    if (isListening) {
+      requestWakeLock();
+    } else {
+      if (wakeLock) {
+        wakeLock.release().then(() => {
+          wakeLock = null;
+        }).catch(() => {});
+      }
+    }
+    return () => {
+      if (wakeLock) {
+        wakeLock.release().then(() => {
+          wakeLock = null;
+        }).catch(() => {});
+      }
+    };
+  }, [isListening]);
+
   useEffect(() => {
     const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
     const x = (window.innerWidth - A4_W * scale) / 2;
@@ -1028,21 +1606,229 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
   }, [applyTransform]);
 
   useEffect(() => {
-    if (!docxRef.current || !template?.filePath) { setIsLoading(false); return; }
-    setIsLoading(true);
+    if (!docxRef.current) return;
 
-    fetch(template.filePath)
-      .then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.blob(); })
-      .then(blob => docx.renderAsync(blob, docxRef.current!, undefined, {
-        inWrapper: true, ignoreWidth: false, ignoreHeight: false,
-        ignoreFonts: false, breakPages: true, useBase64URL: true,
-        renderHeaders: false, renderFooters: false,
-        className: "docx",
-      }))
+    const setupEditorBehaviors = () => {
+        // Apply scale
+        const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
+        const x = (window.innerWidth - A4_W * scale) / 2;
+        applyTransform(x, 0, scale);
+
+        // Setup articles
+        docxRef.current!.querySelectorAll("article").forEach(article => {
+          const el = article as HTMLElement;
+          el.contentEditable = "true";
+          el.spellcheck = false;
+          el.style.cursor = "text";
+          el.style.outline = "none";
+          el.style.caretColor = "#111";
+        });
+
+        // Merge adjacent editable fields first (handles loading existing/restored drafts)
+        mergeAdjacentFields(docxRef.current!);
+
+        // Wire up all editable fields
+        docxRef.current!.querySelectorAll(".legal-editable-field").forEach(field => {
+          wireEditableField(field as HTMLElement);
+        });
+    };
+
+    const container = docxRef.current;
+
+    const handleInput = (e: Event) => {
+      const target = e.target as HTMLElement;
+      const article = target.closest("article");
+      if (!article) return;
+
+      // Defer DOM read slightly — Android WebView may not have flushed textContent yet
+      setTimeout(() => {
+        // Update empty/filled styles for ALL fields in this article
+        article.querySelectorAll(".legal-editable-field").forEach(field => {
+          const f = field as HTMLElement;
+          const textContent = (f.textContent || "").trim();
+          const hasText = textContent.length > 0;
+          f.classList.toggle("is-empty", !hasText);
+          f.classList.toggle("has-value", hasText);
+        });
+
+        // Merge any adjacent empty fields that appeared next to a now-filled field
+        // This handles cases where a second leftover empty field sits right after typed content
+        mergeAdjacentFields(article);
+
+        // Wire any new fields that may have been exposed after merging
+        article.querySelectorAll(".legal-editable-field:not([data-wired])").forEach(field => {
+          (field as HTMLElement).dataset.wired = "1";
+          wireEditableField(field as HTMLElement);
+        });
+
+        // Save state to undo stack with a debounce to group typing operations
+        if (inputDebounceTimerRef.current) clearTimeout(inputDebounceTimerRef.current);
+        inputDebounceTimerRef.current = setTimeout(() => {
+          saveToUndoStack();
+        }, 800);
+
+        // Also save immediately on word boundaries
+        const textVal = target.textContent || "";
+        if ([" ", ",", ".", "\n"].includes(textVal.slice(-1))) {
+          saveToUndoStack();
+        }
+      }, 0);
+
+      // Save selection
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+      }
+
+      // Dynamically recalculate pages when user types
+      schedulePagination(container);
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+      }
+    };
+
+    const handleTouchOrMouseDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target) return;
+
+      // 1. If clicked/tapped directly on or near any editable field (.legal-editable-field)
+      const field = target.closest(".legal-editable-field") as HTMLElement;
+      if (field) {
+        field.focus();
+
+        const sel = window.getSelection();
+        if (sel) {
+          // Defer selection adjustment slightly so browser finishes native touch processing
+          setTimeout(() => {
+            const range = document.createRange();
+            let textNode = field.firstChild;
+            if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+              textNode = document.createTextNode("");
+              field.innerHTML = "";
+              field.appendChild(textNode);
+            }
+            
+            // Only force to the end if the field is empty, otherwise let the native caret index stand
+            if (field.classList.contains("is-empty")) {
+              range.setStart(textNode, textNode.textContent?.length || 0);
+              range.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(range);
+            }
+          }, 50);
+        }
+        return;
+      }
+
+      // 2. Clicked/tapped anywhere else in the page (inside or outside the article text)
+      const section = target.closest("section.docx") as HTMLElement;
+      if (section) {
+        const article = section.querySelector("article");
+        if (article) {
+          // If they click on the margins, we call preventDefault to stop default focus loss
+          const clickedOutsideArticle = !article.contains(target);
+          if (clickedOutsideArticle) {
+            e.preventDefault();
+          }
+
+          article.focus();
+
+          // Get client coordinates of the touch or click
+          let clientX = 0;
+          let clientY = 0;
+          if ('touches' in e && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+          } else if ('clientX' in e) {
+            clientX = e.clientX;
+            clientY = e.clientY;
+          }
+
+          const sel = window.getSelection();
+          if (sel && clientX > 0 && clientY > 0) {
+            let range: Range | null = null;
+            if ((document as any).caretRangeFromPoint) {
+              range = (document as any).caretRangeFromPoint(clientX, clientY);
+            } else if ((document as any).caretPositionFromPoint) {
+              const position = (document as any).caretPositionFromPoint(clientX, clientY);
+              if (position) {
+                range = document.createRange();
+                range.setStart(position.offsetNode, position.offset);
+                range.collapse(true);
+              }
+            }
+
+            // Verify the resolved range is inside the article
+            if (range && article.contains(range.startContainer)) {
+              sel.removeAllRanges();
+              sel.addRange(range);
+            } else if (clickedOutsideArticle) {
+              // Fallback to the end of the article if clicked outside
+              const fallbackRange = document.createRange();
+              fallbackRange.selectNodeContents(article);
+              fallbackRange.collapse(false);
+              sel.removeAllRanges();
+              sel.addRange(fallbackRange);
+            }
+          }
+        }
+      }
+    };
+
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && target.classList.contains("legal-editable-field")) {
+        // Save state to undo stack before user begins editing
+        saveToUndoStack();
+
+        // Delay slightly so that the visual viewport has finished resizing from the keyboard popping up
+        setTimeout(() => {
+          scrollToElement(target);
+        }, 150);
+      }
+    };
+
+    container.addEventListener("input", handleInput);
+    container.addEventListener("click", handleClick);
+    container.addEventListener("mousedown", handleTouchOrMouseDown);
+    container.addEventListener("touchstart", handleTouchOrMouseDown, { passive: false });
+    container.addEventListener("focusin", handleFocusIn);
+
+    const cleanup = () => {
+      container.removeEventListener("input", handleInput);
+      container.removeEventListener("click", handleClick);
+      container.removeEventListener("mousedown", handleTouchOrMouseDown);
+      container.removeEventListener("touchstart", handleTouchOrMouseDown);
+      container.removeEventListener("focusin", handleFocusIn);
+    };
+
+    // ── GUARD: only fetch/render once per formId/customFile ──────────
+    // Without this guard, changing isLoading or pageCount state would
+    // re-trigger this effect and re-fetch the template from scratch,
+    // causing repeated "Loading template…" flicker.
+    if (hasRenderedRef.current) {
+      return cleanup;
+    }
+
+    if (customFile) {
+      hasRenderedRef.current = true;
+      setIsLoading(true);
+      
+      // Delay parsing to allow screen transition animation to finish smoothly (300ms)
+      setTimeout(() => {
+        docx.renderAsync(customFile, docxRef.current!, undefined, {
+          inWrapper: true, ignoreWidth: false, ignoreHeight: false,
+          ignoreFonts: false, breakPages: true, useBase64URL: true,
+          renderHeaders: false, renderFooters: false,
+          className: "docx",
+        })
       .then(() => {
         if (!docxRef.current) return;
-        // ✅ No lockDocument — whole document is now freely editable like MS Word!
-
+        
         const doInject = () => {
           if (docxRef.current) {
             injectAndWire(docxRef.current);
@@ -1065,56 +1851,131 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
             const pc = docxRef.current.querySelectorAll(".docx-wrapper > section.docx, section.docx").length || 1;
             setPageCount(pc);
 
-            const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
-            const x = (window.innerWidth - A4_W * scale) / 2;
-            applyTransform(x, 0, scale);
+            // Snapshot for Reset
+            if (!hasSnapshottedRef.current) {
+              originalHtmlRef.current = docxRef.current.innerHTML;
+              hasSnapshottedRef.current = true;
+            }
 
-            // ✅ Make EVERY article element fully contentEditable — single unified MS Word-like editor!
-            docxRef.current.querySelectorAll("article").forEach(article => {
-              const el = article as HTMLElement;
-              el.contentEditable = "true";
-              el.spellcheck = false;
-              el.style.cursor = "text";
-              el.style.outline = "none";
-              el.style.caretColor = "#111";
-
-              // Single input listener: update is-empty/has-value on ALL dotted fields
-              // whenever anything in the article changes (user typed, deleted, etc.)
-              el.addEventListener("input", () => {
-                el.querySelectorAll(".legal-editable-field").forEach(field => {
-                  const f = field as HTMLElement;
-                  const hasText = (f.textContent || "").trim().length > 0;
-                  f.classList.toggle("is-empty", !hasText);
-                  f.classList.toggle("has-value", hasText);
-                });
-                // Also save current selection for table insertion
-                const sel = window.getSelection();
-                if (sel && sel.rangeCount > 0) {
-                  savedRangeRef.current = sel.getRangeAt(0).cloneRange();
-                }
-              });
-
-              // Track click for table insertion position
-              el.addEventListener("click", () => {
-                const sel = window.getSelection();
-                if (sel && sel.rangeCount > 0) {
-                  savedRangeRef.current = sel.getRangeAt(0).cloneRange();
-                }
-              });
-            });
+            setupEditorBehaviors();
+            saveToUndoStack();
+            setIsLoading(false);
           }
         };
 
-
         if (document.fonts && document.fonts.ready) {
-          document.fonts.ready.then(() => setTimeout(doInject, 200));
+          document.fonts.ready.then(() => setTimeout(doInject, 100));
         } else {
-          setTimeout(doInject, 400);
+          setTimeout(doInject, 200);
         }
       })
-      .catch(e => { console.error(e); toast.error("Could not load template."); })
-      .finally(() => setIsLoading(false));
-  }, [formId, template, applyTransform, resetTrigger]); // 🚨 Added resetTrigger to force reload on reset!
+      .catch(e => {
+        console.error(e);
+        toast.error("Could not load custom file.");
+        setIsLoading(false);
+      });
+      }, 300); // end of setTimeout
+      
+      return cleanup;
+    }
+
+    if (!template?.filePath) { setIsLoading(false); return cleanup; }
+    hasRenderedRef.current = true;
+    setIsLoading(true);
+
+    // Delay parsing to allow screen transition animation to finish smoothly (300ms)
+    setTimeout(() => {
+      fetch(template.filePath)
+        .then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.blob(); })
+        .then(blob => docx.renderAsync(blob, docxRef.current!, undefined, {
+          inWrapper: true, ignoreWidth: false, ignoreHeight: false,
+          ignoreFonts: false, breakPages: true, useBase64URL: true,
+          renderHeaders: false, renderFooters: false,
+          className: "docx",
+        }))
+      .then(() => {
+        if (!docxRef.current) return;
+
+        if (initialContent) {
+          // Opened from Drafts screen — restore the saved draft content
+          docxRef.current.innerHTML = initialContent;
+          setupEditorBehaviors();
+
+          // Snapshot for Reset
+          if (!hasSnapshottedRef.current) {
+            originalHtmlRef.current = initialContent;
+            hasSnapshottedRef.current = true;
+          }
+          
+          // Re-calculate margins and page count
+          const firstSection = docxRef.current.querySelector(".docx-wrapper > section.docx, section.docx") as HTMLElement;
+          if (firstSection) {
+            const computedStyle = window.getComputedStyle(firstSection);
+            const computedLeft = parseFloat(computedStyle.paddingLeft);
+            const computedRight = parseFloat(computedStyle.paddingRight);
+            if (!isNaN(computedLeft) && !isNaN(computedRight)) {
+              setLeftMargin(computedLeft);
+              setRightMargin(computedRight);
+              originalMarginsRef.current = { left: computedLeft, right: computedRight };
+            }
+          }
+          const pc = docxRef.current.querySelectorAll(".docx-wrapper > section.docx, section.docx").length || 1;
+          setPageCount(pc);
+          saveToUndoStack();
+          setIsLoading(false);
+        } else {
+          // Fresh template — inject editable fields then paginate
+          const doInject = () => {
+            if (docxRef.current) {
+              injectAndWire(docxRef.current);
+              breakPagesDynamically(docxRef.current);
+
+              // Read the actual computed margins of the natively rendered section
+              const firstSection = docxRef.current.querySelector(".docx-wrapper > section.docx, section.docx") as HTMLElement;
+              if (firstSection) {
+                const computedStyle = window.getComputedStyle(firstSection);
+                const computedLeft = parseFloat(computedStyle.paddingLeft);
+                const computedRight = parseFloat(computedStyle.paddingRight);
+                if (!isNaN(computedLeft) && !isNaN(computedRight)) {
+                  setLeftMargin(computedLeft);
+                  setRightMargin(computedRight);
+                  originalMarginsRef.current = { left: computedLeft, right: computedRight };
+                }
+              }
+
+              const pc = docxRef.current.querySelectorAll(".docx-wrapper > section.docx, section.docx").length || 1;
+              setPageCount(pc);
+
+              // Snapshot for Reset
+              if (!hasSnapshottedRef.current) {
+                originalHtmlRef.current = docxRef.current.innerHTML;
+                hasSnapshottedRef.current = true;
+              }
+
+              setupEditorBehaviors();
+              saveToUndoStack();
+              setIsLoading(false);
+            }
+          };
+
+          if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(() => setTimeout(doInject, 100));
+          } else {
+            setTimeout(doInject, 200);
+          }
+        }
+      })
+      .catch(e => {
+        console.error(e);
+        toast.error("Could not load template.");
+        setIsLoading(false);
+      });
+    }, 300); // end of setTimeout
+
+    return cleanup;
+  // Only re-run when the actual template source changes, NOT when derived state changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formId, customFile]);
 
   const handlePreview = useCallback(() => {
     if (!docxRef.current) return;
@@ -1130,14 +1991,13 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
     const container = docxRef.current;
     if (!container) return;
 
-    // 1. Reset formatting state variables to original template defaults
+    // 1. Reset formatting state variables
     setLineSpacing(null);
     setPerfectAlign(false);
     setIsTwoColumns(false);
     setShowRuler(true);
     setShowSpacingOptions(false);
     setGlobalAlign("");
-    setShowTools(false);
     if (originalMarginsRef.current) {
       setLeftMargin(originalMarginsRef.current.left);
       setRightMargin(originalMarginsRef.current.right);
@@ -1146,11 +2006,49 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
       setRightMargin(72);
     }
 
-    // 2. Trigger template reload to clear all typing, tables, and offsets!
-    setResetTrigger(prev => prev + 1);
+    // 2. Restore original HTML snapshot directly — no re-fetch, no async
+    //    Fresh template → restores blank template
+    //    Opened from draft → restores the saved draft content (last save point)
+    if (originalHtmlRef.current && container) {
+      container.innerHTML = originalHtmlRef.current;
+      injectAndWire(container);
 
-    toast.success("Document layout & formatting reset to original!");
-  }, []);
+      // Setup articles
+      container.querySelectorAll("article").forEach(article => {
+        const el = article as HTMLElement;
+        el.contentEditable = "true";
+        el.spellcheck = false;
+        el.style.cursor = "text";
+        el.style.outline = "none";
+        el.style.caretColor = "#111";
+      });
+
+      // Recalculate pages
+      schedulePagination(container);
+      const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
+      const x = (window.innerWidth - A4_W * scale) / 2;
+      applyTransform(x, 0, scale);
+
+      toast.success(initialContent ? "Draft reset to last saved state!" : "Document reset to original template!");
+    } else {
+      toast.error("Could not reset document layout.");
+    }
+  }, [formId, initialContent, applyTransform]);
+
+  const createEmptyCell = () => {
+    const td = document.createElement("td");
+    td.style.padding = "8px 10px";
+    td.style.border = "1px solid #1e293b";
+    td.style.height = "2.2em";
+    td.style.verticalAlign = "top";
+    const div = document.createElement("div");
+    div.contentEditable = "true";
+    div.style.minHeight = "1.5em";
+    div.style.outline = "none";
+    div.innerHTML = "&#8203;";
+    td.appendChild(div);
+    return td;
+  };
 
   const insertTableAtCursor = () => {
     let inserted = false;
@@ -1172,22 +2070,18 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
         td.style.padding = "8px 10px";
         td.style.border = "1px solid #1e293b";
         td.style.height = "2.2em";
-        td.style.verticalAlign = "middle";
+        td.style.verticalAlign = "top";
+        
+        // Wrap the cell content in an explicit contentEditable div.
+        // Android Gboard's backspace completely breaks if it's just typing directly into a <td>
+        // that inherited contentEditable from a parent. This forces it to be recognized as a distinct text field.
+        const div = document.createElement("div");
+        div.contentEditable = "true";
+        div.style.minHeight = "1.5em";
+        div.style.outline = "none";
+        div.innerHTML = "&#8203;"; // Zero-width space for anchor
+        td.appendChild(div);
 
-        const span = document.createElement("span");
-        span.className = "legal-editable-field is-empty td-field";
-        span.contentEditable = "true";
-        span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        span.style.display = "block";
-        span.style.width = "100%";
-        span.style.minHeight = "1.5em";
-        span.style.outline = "none";
-        span.addEventListener("input", () => {
-          const text = span.textContent || "";
-          span.classList.toggle("is-empty", text.length === 0);
-          span.classList.toggle("has-value", text.length > 0);
-        });
-        td.appendChild(span);
         tr.appendChild(td);
       }
       tbody.appendChild(tr);
@@ -1254,38 +2148,59 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
     }
   };
 
-  const handlePaperSelect = async (size: PaperSize) => {
+  const handlePaperSelect = async (size: PaperSize, pagesStr?: string) => {
     setShowPaperModal(false);
     handleSave();
-    setExportingPDF(true);
+    
+    // Parse the page string into an array of 0-indexed numbers
+    let pagesToExport: number[] | undefined = undefined;
+    if (pagesStr && pagesStr.trim() !== "") {
+      const parsed: number[] = [];
+      const parts = pagesStr.split(",");
+      parts.forEach(part => {
+        const range = part.split("-").map(s => parseInt(s.trim(), 10));
+        if (range.length === 1 && !isNaN(range[0])) {
+          parsed.push(range[0] - 1);
+        } else if (range.length === 2 && !isNaN(range[0]) && !isNaN(range[1])) {
+          for (let i = range[0]; i <= range[1]; i++) {
+            parsed.push(i - 1);
+          }
+        }
+      });
+      if (parsed.length > 0) {
+        pagesToExport = Array.from(new Set(parsed)).sort((a, b) => a - b);
+      }
+    }
 
     const performExport = async () => {
       toast.info(`Generating ${size.toUpperCase()} PDF…`);
-      const { x: ox, y: oy, scale: os } = stateRef.current;
-
-      applyTransform(0, 0, 1);
-      await new Promise(r => setTimeout(r, 200));
+      setExportingPDF(true); // Show loader spinner during generation
 
       try {
         await generatePDF({
           elementId: "docx-print-target",
           filename: `${template?.name || "legal-document"}-${Date.now()}.pdf`,
           paperSize: size,
-          onSuccess: () => toast.success("PDF downloaded!"),
-          onError: () => toast.error("PDF failed. Try again."),
+          pagesToExport,
+          onSuccess: () => {
+            savePDFExport(formId, template?.name || "Legal Document", "₹10");
+            toast.success("PDF exported successfully!");
+            setExportingPDF(false);
+          },
+          onError: (err: any) => {
+            toast.error(`PDF failed: ${err?.message || String(err) || 'Unknown error'}`);
+            setExportingPDF(false);
+          },
         });
       } catch (err) {
         console.error("PDF generation failed:", err);
         toast.error("PDF failed. Try again.");
-      } finally {
-        applyTransform(ox, oy, os);
         setExportingPDF(false);
       }
     };
 
     if (onExportPDF) {
-      onExportPDF(() => { performExport(); });
-      setExportingPDF(false);
+      onExportPDF(performExport);
     } else {
       await performExport();
     }
@@ -1295,36 +2210,63 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
 
 
   const insertTable = () => {
-    const rows = Number(tableRows);
-    const cols = Number(tableCols);
+    const rows = parseInt(tableRows, 10);
+    const cols = parseInt(tableCols, 10);
 
-    if (!rows || !cols) return;
+    if (!rows || rows < 1) { toast.error("Rows must be at least 1"); return; }
+    if (!cols || cols < 1) { toast.error("Columns must be at least 1"); return; }
 
-    let html = "<table style='width:100%; border-collapse: collapse;'>";
+    // Determine table-level styles based on tableFit selection
+    let tableStyle = "border-collapse: collapse; ";
+    let tdStyle = "border:1px solid #000; padding:8px; ";
+
+    if (tableFit === "fixed") {
+      // Fixed column width: equal columns, no shrinking
+      const colPct = Math.floor(100 / cols);
+      tableStyle += `width:100%; table-layout:fixed;`;
+      tdStyle += `width:${colPct}%; overflow:hidden; word-break:break-word;`;
+    } else if (tableFit === "content") {
+      // AutoFit to content: table shrinks to fit its content
+      tableStyle += `width:auto; table-layout:auto;`;
+      tdStyle += `min-width:60px; white-space:nowrap;`;
+    } else {
+      // AutoFit to window: full width, auto layout
+      tableStyle += `width:100%; table-layout:auto;`;
+      tdStyle += `min-width:40px;`;
+    }
+
+    let html = `<table style='${tableStyle}'>`;
 
     for (let r = 0; r < rows; r++) {
       html += "<tr>";
-
       for (let c = 0; c < cols; c++) {
-        html += `
-        <td
-          style="
-            border:1px solid #000;
-            padding:8px;
-            min-width:80px;
-          "
-        >
-          &nbsp;
-        </td>
-      `;
+        html += `<td style="${tdStyle}">&nbsp;</td>`;
       }
-
       html += "</tr>";
     }
 
     html += "</table><br/>";
 
-    document.execCommand("insertHTML", false, html);
+    // Try to insert at saved cursor position, otherwise append to first article
+    const sel = window.getSelection();
+    if (savedRangeRef.current) {
+      sel?.removeAllRanges();
+      sel?.addRange(savedRangeRef.current);
+      document.execCommand("insertHTML", false, html);
+    } else if (docxRef.current) {
+      const article = docxRef.current.querySelector("article");
+      if (article) {
+        const div = document.createElement("div");
+        div.innerHTML = html;
+        while (div.firstChild) article.appendChild(div.firstChild);
+      }
+    } else {
+      document.execCommand("insertHTML", false, html);
+    }
+
+    setTimeout(() => {
+      if (docxRef.current) schedulePagination(docxRef.current);
+    }, 150);
 
     setShowTableModal(false);
   };
@@ -1332,9 +2274,20 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100dvh", overflow: "hidden" }}>
 
+      {exportingPDF && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 9999, background: "rgba(255,255,255,0.9)",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center"
+        }}>
+          <Loader2 size={48} className="animate-spin text-[#1e3a5f] mb-4" />
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}>Generating High-Quality PDF...</h2>
+          <p style={{ fontSize: 14, color: "#64748b" }}>Please wait, this may take a few seconds.</p>
+        </div>
+      )}
+
       <TopNavBar
-        title={template?.name || "Legal Document Editor"}
-        subtitle={template?.description}
+        title={displayName}
+        subtitle={displaySubtitle}
         onBack={onBack}
       />
 
@@ -1345,6 +2298,19 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
         style={{
           flex: 1, overflow: "hidden", background: "#cbd5e1",
           position: "relative", touchAction: "none",
+        }}
+        onTouchEnd={(e) => {
+          const target = e.target as HTMLElement | null;
+          if (!target || !docxRef.current) return;
+          const tableEl = target.closest("table") as HTMLTableElement | null;
+          const tdEl = target.closest("td") as HTMLTableCellElement | null;
+          if (tableEl && docxRef.current.contains(tableEl)) {
+            setInTableNode(tableEl);
+            setInTableCellNode(tdEl);
+          } else {
+            setInTableNode(null);
+            setInTableCellNode(null);
+          }
         }}
       >
         {isLoading && (
@@ -1371,14 +2337,18 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
                 // Always move the handle visually
                 setLeftMargin(m);
                 if (selectedParaRef.current) {
-                  // Apply RELATIVE indent to selected paragraph only.
-                  // m is absolute from page left edge; section already provides leftMargin padding.
-                  // So relative indent = m - leftMargin (0px at original position).
-                  const relativeIndent = Math.max(0, m - leftMargin);
-                  selectedParaRef.current.style.paddingLeft = `${relativeIndent}px`;
-                  selectedParaRef.current.style.marginLeft = "0";
+                  const baseLeft = originalMarginsRef.current?.left || 72;
+                  // Allow negative margins so text can move into the page padding!
+                  const relativeIndent = m - baseLeft;
+                  selectedParaRef.current.style.marginLeft = `${relativeIndent}px`;
+                  selectedParaRef.current.style.paddingLeft = "0"; // Reset any old padding
+                } else {
+                  // Apply to all pages if no paragraph is selected!
+                  const sections = docxRef.current?.querySelectorAll(".docx-wrapper > section.docx, section.docx");
+                  sections?.forEach(sec => {
+                    (sec as HTMLElement).style.paddingLeft = `${m}px`;
+                  });
                 }
-                // NO fallback to section — that would affect ALL paragraphs!
                 setTimeout(() => {
                   if (docxRef.current) breakPagesDynamically(docxRef.current);
                 }, 100);
@@ -1386,11 +2356,17 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               onRightMarginChange={(m) => {
                 setRightMargin(m);
                 if (selectedParaRef.current) {
-                  const relativeIndent = Math.max(0, m - rightMargin);
-                  selectedParaRef.current.style.paddingRight = `${relativeIndent}px`;
-                  selectedParaRef.current.style.marginRight = "0";
+                  const baseRight = originalMarginsRef.current?.right || 72;
+                  const relativeIndent = m - baseRight;
+                  selectedParaRef.current.style.marginRight = `${relativeIndent}px`;
+                  selectedParaRef.current.style.paddingRight = "0";
+                } else {
+                  // Apply to all pages if no paragraph is selected!
+                  const sections = docxRef.current?.querySelectorAll(".docx-wrapper > section.docx, section.docx");
+                  sections?.forEach(sec => {
+                    (sec as HTMLElement).style.paddingRight = `${m}px`;
+                  });
                 }
-                // NO fallback to section
                 setTimeout(() => {
                   if (docxRef.current) breakPagesDynamically(docxRef.current);
                 }, 100);
@@ -1406,8 +2382,20 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
             spellCheck={false}
             autoCorrect="off"
             autoCapitalize="off"
-
-            className={`legal-doc-container ${perfectAlign ? "perfect-left-align" : ""} ${isTwoColumns ? "two-columns-layout" : ""} ${globalAlign ? `global-align-${globalAlign}` : ""}`}
+            onTouchEnd={(e) => {
+              const target = e.target as HTMLElement | null;
+              if (!target || !docxRef.current) return;
+              const tableEl = target.closest("table") as HTMLTableElement | null;
+              const tdEl = target.closest("td") as HTMLTableCellElement | null;
+              if (tableEl && docxRef.current.contains(tableEl)) {
+                setInTableNode(tableEl);
+                setInTableCellNode(tdEl);
+              } else {
+                setInTableNode(null);
+                setInTableCellNode(null);
+              }
+            }}
+            className={`legal-doc-container ${perfectAlign ? "perfect-left-align" : ""} ${isTwoColumns ? "two-columns-layout" : ""} ${globalAlign ? `global-align-${globalAlign}` : ""} ${lineSpacing ? "has-custom-line-spacing" : ""}`}
             style={{
               visibility: isLoading ? "hidden" : "visible",
               //WebkitUserSelect: "none",
@@ -1443,7 +2431,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
         }}
       >
         {/* Dynamic Spacing Secondary Toolbar */}
-        {showTools && showSpacingOptions && (
+        {showSpacingOptions && (
           <div
             style={{
               display: "flex",
@@ -1490,31 +2478,99 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
         )}
 
         {/* Primary Row: Swipeable Horizontal Edit Options */}
-        {showTools && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "6px 12px",
-              overflowX: "auto",
-              whiteSpace: "nowrap",
-              borderBottom: "1px solid #f1f5f9",
-              scrollbarWidth: "none",
-              msOverflowStyle: "none",
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 12px",
+            overflowX: "auto",
+            whiteSpace: "nowrap",
+            borderBottom: "1px solid #f1f5f9",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+          }}
+          className="no-scrollbar"
+        >
+          {/* Undo Button */}
+          <button
+            onPointerDown={(e) => {
+              e.preventDefault();
+              handleUndo();
             }}
-            className="no-scrollbar"
+            style={{
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+              background: "transparent", color: "#475569", border: "none", borderRadius: 8,
+              minWidth: "46px", height: "44px", cursor: "pointer", transition: "all 0.15s",
+            }}
+            title="Undo"
           >
+            <div style={{ width: 24, height: 24, borderRadius: "50%", background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Undo2 size={13} strokeWidth={2.5} />
+            </div>
+            <span style={{ fontSize: 9, fontWeight: 700 }}>Undo</span>
+          </button>
+
+          {/* Tab Indent Button */}
+          <button
+            onPointerDown={(e) => {
+              e.preventDefault();
+              const sel = window.getSelection();
+              if (savedRangeRef.current) {
+                sel?.removeAllRanges();
+                sel?.addRange(savedRangeRef.current);
+              }
+              execFormatCommand("insertHTML", "\u00a0\u00a0\u00a0\u00a0");
+              setTimeout(() => {
+                if (docxRef.current) schedulePagination(docxRef.current);
+              }, 100);
+            }}
+            style={{
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+              background: "transparent", color: "#475569", border: "none", borderRadius: 8,
+              minWidth: "46px", height: "44px", cursor: "pointer", transition: "all 0.15s",
+            }}
+            title="Tab Indent"
+          >
+            <div style={{ width: 24, height: 24, borderRadius: "50%", background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace", fontSize: 13, fontWeight: 700 }}>
+              ⇥
+            </div>
+            <span style={{ fontSize: 9, fontWeight: 700 }}>Tab</span>
+          </button>
+
+          <div style={{ width: 1, height: 28, background: "#cbd5e1", flexShrink: 0, margin: "0 4px" }} />
+
+          {/* TABLE TOOLS: Always first when cursor is inside a table */}
+          {inTableNode && (
+            <>
+              <button
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  setShowTableEditMenu(true);
+                }}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+                  background: "#eff6ff", color: "#1e3a8a",
+                  border: "1.5px solid #bfdbfe",
+                  borderRadius: 8, minWidth: "60px", height: "44px", cursor: "default",
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{ width: 24, height: 24, borderRadius: "50%", background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Table size={14} strokeWidth={2.5} color="#1e3a8a" />
+                </div>
+                <span style={{ fontSize: 9, fontWeight: 700, color: "#1e3a8a" }}>Table Tools</span>
+              </button>
+              <div style={{ width: 1, height: 28, background: "#cbd5e1", flexShrink: 0 }} />
+            </>
+          )}
+
             {/* Bold Button */}
             <button
               onPointerDown={(e) => {
                 e.preventDefault();
                 try {
-                  document.execCommand("bold");
+                  execFormatCommand("bold");
                   setSelectionFormat(prev => ({ ...prev, bold: document.queryCommandState("bold") }));
                 } catch (err) { }
               }}
@@ -1549,7 +2605,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               onPointerDown={(e) => {
                 e.preventDefault();
                 try {
-                  document.execCommand("underline");
+                  execFormatCommand("underline");
                   setSelectionFormat(prev => ({ ...prev, underline: document.queryCommandState("underline") }));
                 } catch (err) { }
               }}
@@ -1585,7 +2641,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
             <button
               onPointerDown={(e) => {
                 e.preventDefault();
-                document.execCommand("justifyCenter");
+                execFormatCommand("justifyCenter");
               }}
               style={{
                 display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
@@ -1605,7 +2661,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
             <button
               onPointerDown={(e) => {
                 e.preventDefault();
-                document.execCommand("justifyFull");
+                execFormatCommand("justifyFull");
               }}
               style={{
                 display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
@@ -1622,6 +2678,102 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
             </button>
 
             <div style={{ width: 1, height: 24, background: "#cbd5e1", flexShrink: 0, margin: "0 2px" }} />
+
+            {/* Font Size Picker */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                <button
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    const current = getActiveFieldFontSize();
+                    const next = Math.max(8, current - 1);
+                    setFontSize(next);
+                    if (focusedField) {
+                      focusedField.style.fontSize = `${next}pt`;
+                      setTimeout(() => {
+                        if (docxRef.current) schedulePagination(docxRef.current);
+                      }, 100);
+                      return;
+                    }
+                    // Restore selection if lost due to button tap
+                    const sel = window.getSelection();
+                    if (savedRangeRef.current) { sel?.removeAllRanges(); sel?.addRange(savedRangeRef.current); }
+                    const sel2 = window.getSelection();
+                    if (!sel2 || sel2.rangeCount === 0) return;
+                    const range = sel2.getRangeAt(0);
+                    if (!range.collapsed) {
+                      document.execCommand("fontSize", false, "7");
+                      (document.querySelectorAll("font[size='7']") as NodeListOf<HTMLElement>).forEach(f => { f.removeAttribute("size"); f.style.fontSize = `${next}pt`; });
+                    } else if (selectedParaRef.current && docxRef.current?.contains(selectedParaRef.current)) {
+                      selectedParaRef.current.style.fontSize = `${next}pt`;
+                      selectedParaRef.current.querySelectorAll('*').forEach((el: any) => {
+                        if (el.style) el.style.fontSize = `${next}pt`;
+                      });
+                    } else {
+                      const span = document.createElement("span");
+                      span.style.fontSize = `${next}pt`;
+                      span.appendChild(document.createTextNode("\u200b"));
+                      range.insertNode(span);
+                      const nr = document.createRange();
+                      nr.setStart(span.firstChild!, 1);
+                      nr.collapse(true);
+                      sel2.removeAllRanges(); sel2.addRange(nr);
+                      savedRangeRef.current = nr.cloneRange();
+                    }
+                    setTimeout(() => {
+                      if (docxRef.current) schedulePagination(docxRef.current);
+                    }, 100);
+                  }}
+                  style={{ width: 20, height: 20, border: "1px solid #e2e8f0", borderRadius: 4, background: "#f8fafc", color: "#374151", fontSize: 13, fontWeight: 700, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                >−</button>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#374151", minWidth: 22, textAlign: "center" }}>
+                  {typeof fontSize === "number" ? fontSize : getActiveFieldFontSize()}
+                </span>
+                <button
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    const current = getActiveFieldFontSize();
+                    const next = Math.min(36, current + 1);
+                    setFontSize(next);
+                    if (focusedField) {
+                      focusedField.style.fontSize = `${next}pt`;
+                      setTimeout(() => {
+                        if (docxRef.current) schedulePagination(docxRef.current);
+                      }, 100);
+                      return;
+                    }
+                    const sel = window.getSelection();
+                    if (savedRangeRef.current) { sel?.removeAllRanges(); sel?.addRange(savedRangeRef.current); }
+                    const sel2 = window.getSelection();
+                    if (!sel2 || sel2.rangeCount === 0) return;
+                    const range = sel2.getRangeAt(0);
+                    if (!range.collapsed) {
+                      document.execCommand("fontSize", false, "7");
+                      (document.querySelectorAll("font[size='7']") as NodeListOf<HTMLElement>).forEach(f => { f.removeAttribute("size"); f.style.fontSize = `${next}pt`; });
+                    } else if (selectedParaRef.current && docxRef.current?.contains(selectedParaRef.current)) {
+                      selectedParaRef.current.style.fontSize = `${next}pt`;
+                      selectedParaRef.current.querySelectorAll('*').forEach((el: any) => {
+                        if (el.style) el.style.fontSize = `${next}pt`;
+                      });
+                    } else {
+                      const span = document.createElement("span");
+                      span.style.fontSize = `${next}pt`;
+                      span.appendChild(document.createTextNode("\u200b"));
+                      range.insertNode(span);
+                      const nr = document.createRange();
+                      nr.setStart(span.firstChild!, 1);
+                      nr.collapse(true);
+                      sel2.removeAllRanges(); sel2.addRange(nr);
+                      savedRangeRef.current = nr.cloneRange();
+                    }
+                    setTimeout(() => {
+                      if (docxRef.current) schedulePagination(docxRef.current);
+                    }, 100);
+                  }}
+                  style={{ width: 20, height: 20, border: "1px solid #e2e8f0", borderRadius: 4, background: "#f8fafc", color: "#374151", fontSize: 13, fontWeight: 700, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 700, color: "#475569" }}>Font Size</span>
+            </div>
 
             {/* Table Insert Button */}
             <button
@@ -1715,82 +2867,26 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               </div>
               <span style={{ fontSize: 9, fontWeight: 700 }}>Ruler</span>
             </button>
-          </motion.div>
-        )}
+
+          </div>
 
         {/* Secondary Row: Primary Operations Sub-bar (Preview & Export PDF) - Ultra-Compact Style */}
         <div
+          className="no-scrollbar"
           style={{
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: "flex-start",
             gap: 8,
             padding: "6px 12px 10px",
             borderTop: "1px solid #f1f5f9",
             background: "#ffffff",
+            overflowX: "auto",
+            whiteSpace: "nowrap",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
           }}
         >
-
-          <button
-            onClick={() => setShowTableModal(true)}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 2,
-              background: "transparent",
-              color: "#475569",
-              border: "none",
-              borderRadius: 8,
-              minWidth: "46px",
-              height: "44px",
-              cursor: "pointer",
-            }}
-          >
-            <div
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: "50%",
-                background: "#f1f5f9",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Table size={13} />
-            </div>
-
-            <span style={{ fontSize: 9, fontWeight: 700 }}>
-              Table
-            </span>
-          </button>
-          {/* Format Toggle Button */}
-          <button
-            onPointerDown={(e) => {
-              e.preventDefault();
-              setShowTools(prev => !prev);
-            }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: showTools ? "#e0f2fe" : "#f1f5f9",
-              color: showTools ? "#0369a1" : "#475569",
-              border: "1px solid",
-              borderColor: showTools ? "#bae6fd" : "#cbd5e1",
-              borderRadius: "10px",
-              padding: "7px 12px",
-              cursor: "pointer",
-              transition: "all 0.15s",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-            }}
-            title="Formatting & Spacing Tools"
-          >
-            <Ruler size={16} style={{ marginRight: showTools ? 4 : 0 }} />
-            {showTools && <span style={{ fontSize: 12, fontWeight: 700 }}>Hide Tools</span>}
-          </button>
 
           {/* Reset Layout Button */}
           <button
@@ -1800,15 +2896,15 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               alignItems: "center",
               justifyContent: "center",
               gap: 5,
-              background: "#f8fafc",
-              color: "#64748b",
-              border: "1px solid #cbd5e1",
+              background: "#fff1f2",
+              color: "#be123c",
+              border: "1px solid #fecdd3",
               borderRadius: "10px",
               padding: "7px 12px",
               fontWeight: 700,
               fontSize: 12,
               cursor: "pointer",
-              flex: 1,
+              flexShrink: 0,
               transition: "background 0.15s, transform 0.1s",
               boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
             }}
@@ -1816,6 +2912,38 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
             onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
           >
             <RotateCcw size={14} /> Reset
+          </button>
+
+          {/* Save as Draft Button */}
+          <button
+            onClick={() => {
+              if (!docxRef.current) return;
+              const templateName = displayName;
+              const saved = saveDraft(formId, templateName, docxRef.current.innerHTML, currentDraftId);
+              setCurrentDraftId(saved.id);
+              toast.success("Draft saved!", { duration: 2000 });
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 5,
+              background: "#f0fdf4",
+              color: "#15803d",
+              border: "1px solid #bbf7d0",
+              borderRadius: "10px",
+              padding: "7px 12px",
+              fontWeight: 700,
+              fontSize: 12,
+              cursor: "pointer",
+              flexShrink: 0,
+              transition: "background 0.15s, transform 0.1s",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+            }}
+            onMouseDown={(e) => e.currentTarget.style.transform = "scale(0.98)"}
+            onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
+          >
+            <Save size={14} /> Save Draft
           </button>
 
           <button
@@ -1833,7 +2961,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               fontWeight: 700,
               fontSize: 12,
               cursor: "pointer",
-              flex: 1,
+              flexShrink: 0,
               transition: "background 0.15s, transform 0.1s",
               boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
             }}
@@ -1859,7 +2987,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               fontWeight: 700,
               fontSize: 12,
               cursor: exportingPDF ? "not-allowed" : "pointer",
-              flex: 1.2,
+              flexShrink: 0,
               boxShadow: "0 4px 12px rgba(155,28,49,0.3)",
               opacity: exportingPDF ? 0.7 : 1,
               transition: "background 0.15s, transform 0.1s",
@@ -1889,7 +3017,7 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               marginBottom: `-${A4_W * (1 - previewScale)}px`,
             }}>
               <div
-                className={`legal-doc-container ${perfectAlign ? "perfect-left-align" : ""} ${isTwoColumns ? "two-columns-layout" : ""} ${globalAlign ? `global-align-${globalAlign}` : ""}`}
+                className={`legal-doc-container ${perfectAlign ? "perfect-left-align" : ""} ${isTwoColumns ? "two-columns-layout" : ""} ${globalAlign ? `global-align-${globalAlign}` : ""} ${lineSpacing ? "has-custom-line-spacing" : ""}`}
                 style={{
                   "--document-line-spacing": lineSpacing || "inherit",
                   "--document-left-margin": `${leftMargin}px`,
@@ -1955,15 +3083,17 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
 
               <input
                 type="number"
-                min={1}
+                min={0}
                 value={tableCols}
-                onChange={(e) => setTableCols(Number(e.target.value) || 1)}
+                onChange={(e) => setTableCols(e.target.value)}
+                onFocus={(e) => e.target.select()}
                 style={{
                   width: "100%",
                   height: 38,
                   border: "1px solid #bfc5d2",
                   borderRadius: 4,
                   padding: "0 10px",
+                  fontSize: 16,
                 }}
               />
             </div>
@@ -1975,15 +3105,17 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
 
               <input
                 type="number"
-                min={1}
+                min={0}
                 value={tableRows}
-                onChange={(e) => setTableRows(Number(e.target.value) || 1)}
+                onChange={(e) => setTableRows(e.target.value)}
+                onFocus={(e) => e.target.select()}
                 style={{
                   width: "100%",
                   height: 38,
                   border: "1px solid #bfc5d2",
                   borderRadius: 4,
                   padding: "0 10px",
+                  fontSize: 16,
                 }}
               />
             </div>
@@ -2222,6 +3354,120 @@ export function Editor({ formId, onBack, onExportPDF }: EditorProps) {
               </div>
             </motion.div>
           </motion.div>
+        )}
+
+        {/* TABLE EDIT OPTIONS MENU */}
+        {showTableEditMenu && (
+          <div
+            style={{
+              position: "fixed", inset: 0, zIndex: 100,
+              background: "rgba(0,0,0,0.45)",
+              display: "flex", alignItems: "flex-end", justifyContent: "center",
+              animation: "fadeIn 180ms ease-out",
+            }}
+            onClick={() => setShowTableEditMenu(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: "100%", background: "#ffffff",
+                borderTopLeftRadius: 20, borderTopRightRadius: 20,
+                padding: "16px 16px 32px",
+                display: "flex", flexDirection: "column", gap: 8,
+                boxShadow: "0 -4px 20px rgba(0,0,0,0.15)",
+                transform: "translateY(0)",
+                animation: "slideUp 220ms ease-out",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#1e293b", display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Table size={16} color="#1e3a8a" />
+                  </div>
+                  Table Tools
+                </h3>
+                <button onClick={() => setShowTableEditMenu(false)} style={{ background: "transparent", border: "none", color: "#64748b" }}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <button
+                  onClick={() => {
+                    if (inTableCellNode && inTableCellNode.parentElement) {
+                      const tr = inTableCellNode.parentElement as HTMLTableRowElement;
+                      const newTr = document.createElement("tr");
+                      Array.from(tr.children).forEach(() => newTr.appendChild(createEmptyCell()));
+                      tr.insertAdjacentElement("afterend", newTr);
+                      if (docxRef.current) schedulePagination(docxRef.current);
+                    }
+                    setShowTableEditMenu(false);
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: "#f8fafc", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 600, color: "#1e293b", textAlign: "left" }}
+                >
+                  <Plus size={20} color="#16a34a" /> Insert Row Below
+                </button>
+                
+                <button
+                  onClick={() => {
+                    if (inTableCellNode && inTableNode) {
+                      const cellIndex = inTableCellNode.cellIndex;
+                      Array.from(inTableNode.rows).forEach(row => row.insertBefore(createEmptyCell(), row.cells[cellIndex + 1] || null));
+                      if (docxRef.current) schedulePagination(docxRef.current);
+                    }
+                    setShowTableEditMenu(false);
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: "#f8fafc", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 600, color: "#1e293b", textAlign: "left" }}
+                >
+                  <Plus size={20} color="#2563eb" /> Insert Column Right
+                </button>
+                
+                <button
+                  onClick={() => {
+                    if (inTableCellNode && inTableCellNode.parentElement) {
+                      const tr = inTableCellNode.parentElement as HTMLTableRowElement;
+                      tr.remove();
+                      if (inTableNode.rows.length === 0) { inTableNode.remove(); setInTableNode(null); setInTableCellNode(null); }
+                      if (docxRef.current) schedulePagination(docxRef.current);
+                    }
+                    setShowTableEditMenu(false);
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: "#f8fafc", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 600, color: "#1e293b", textAlign: "left" }}
+                >
+                  <Minus size={20} color="#d97706" /> Delete Row
+                </button>
+                
+                <button
+                  onClick={() => {
+                    if (inTableCellNode && inTableNode) {
+                      const cellIndex = inTableCellNode.cellIndex;
+                      Array.from(inTableNode.rows).forEach(row => { if (row.cells[cellIndex]) row.cells[cellIndex].remove(); });
+                      if (inTableNode.rows.length > 0 && inTableNode.rows[0].cells.length === 0) { inTableNode.remove(); setInTableNode(null); setInTableCellNode(null); }
+                      if (docxRef.current) schedulePagination(docxRef.current);
+                    }
+                    setShowTableEditMenu(false);
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: "#f8fafc", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 600, color: "#1e293b", textAlign: "left" }}
+                >
+                  <Minus size={20} color="#9333ea" /> Delete Column
+                </button>
+                
+                <button
+                  onClick={() => {
+                    if (inTableNode && inTableNode.parentNode) {
+                      inTableNode.parentNode.removeChild(inTableNode);
+                      setInTableNode(null); setInTableCellNode(null);
+                      if (docxRef.current) schedulePagination(docxRef.current);
+                    }
+                    setShowTableEditMenu(false);
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: "#fee2e2", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 600, color: "#b91c1c", textAlign: "left", marginTop: 8 }}
+                >
+                  <Trash size={20} color="#b91c1c" /> Delete Entire Table
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </AnimatePresence>
     </div>

@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, FileText, ChevronRight, Search, X, Globe, AlertCircle, Folder } from "lucide-react";
+import { ArrowLeft, ChevronRight, Search, X, FileText } from "lucide-react";
 import { useState, useMemo } from "react";
 import { courts } from "../../lib/legalData";
 import {
@@ -7,9 +7,76 @@ import {
   getAvailableLanguages,
   getTemplatesForCourt,
   CATEGORY_DISPLAY_NAMES,
+  CATEGORY_DISPLAY_NAMES_HI,
   type Language,
   type TemplateFile,
 } from "../../lib/templateRegistry";
+import { storage } from "../../lib/storage";
+import { MESSAGES, MESSAGES_HI } from "../../lib/messages";
+
+// ── Category icon mapping ─────────────────────────────────────────────
+import iconCivil from "../../assets/icons/civil_cases.png";
+import iconCriminal from "../../assets/icons/criminal_case.png";
+import iconClaims from "../../assets/icons/claims.png";
+import iconAgreement from "../../assets/icons/agreement.png";
+import iconGeneral from "../../assets/icons/general_format.png";
+import iconMarriage from "../../assets/icons/marriage.png";
+import iconRti from "../../assets/icons/rti.png";
+import iconHighCourt from "../../assets/icons/high_court.png";
+
+const CATEGORY_ICONS: Record<string, string> = {
+  // English category keys
+  'Civil Cases':           iconCivil,
+  'Criminal Cases':        iconCriminal,
+  'Claims':                iconClaims,
+  'CIVIL':                 iconCivil,
+  'CRIMINAL':              iconCriminal,
+  'CLAIM':                 iconClaims,
+  'Agreement Draft':       iconAgreement,
+  'General Formats':       iconGeneral,
+  'General Forms':         iconGeneral,
+  'formate':               iconGeneral,
+  'Marriage':              iconMarriage,
+  'marriage':              iconMarriage,
+  'RTI':                   iconRti,
+  'High Court':            iconHighCourt,
+  // Hindi category keys
+  'दीवानी मामले':           iconCivil,
+  'आपराधिक मामले':          iconCriminal,
+  'दावे':                   iconClaims,
+  'विवाह':                  iconMarriage,
+  'आरटीआई':                 iconRti,
+};
+
+function getCategoryIcon(name: string): string | undefined {
+  // Direct match
+  if (CATEGORY_ICONS[name]) return CATEGORY_ICONS[name];
+  // Partial/case-insensitive match
+  const lname = name.toLowerCase();
+  for (const [key, val] of Object.entries(CATEGORY_ICONS)) {
+    if (lname.includes(key.toLowerCase()) || key.toLowerCase().includes(lname)) return val;
+  }
+  return undefined;
+}
+
+// ── Custom Court Logos ────────────────────────────────────────────────
+import parentDistrictCourt from "../../assets/icons/parent_district_court.png";
+import parentFamilyCourt from "../../assets/icons/parent_family_court.png";
+import parentJuvenileCourt from "../../assets/icons/parent_juvenile_court.png";
+import parentRevenueCourt from "../../assets/icons/parent_revenue_court.png";
+import parentForumCourt from "../../assets/icons/parent_forum_court.png";
+import parentRegistrar from "../../assets/icons/parent_registrar.png";
+
+const COURT_LOGOS: Record<string, string> = {
+  'high-court': iconHighCourt,
+  'district-court': parentDistrictCourt,
+  'family-court': parentFamilyCourt,
+  'juvenile-court': parentJuvenileCourt,
+  'revenue-court': parentRevenueCourt,
+  'forum-court': parentForumCourt,
+  'registrar': parentRegistrar,
+  'file': iconGeneral,
+};
 
 interface CourtModuleProps {
   courtId: string;
@@ -17,79 +84,6 @@ interface CourtModuleProps {
   onSelectForm: (templateId: string) => void;
 }
 
-// ── "English not available" popup ─────────────────────────────────
-function EnglishComingSoonModal({ onClose, onConfirm }: { onClose: () => void; onConfirm?: () => void }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ y: 80, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 80, opacity: 0 }}
-        transition={{ type: "spring", stiffness: 300, damping: 28 }}
-        onClick={e => e.stopPropagation()}
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden"
-      >
-        {/* Icon strip */}
-        <div className="bg-amber-50 px-6 pt-6 pb-4 flex flex-col items-center">
-          <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center mb-3">
-            <Globe className="w-7 h-7 text-amber-500" />
-          </div>
-          <h2 className="text-lg font-bold text-gray-900 text-center">
-            English Template Not Available
-          </h2>
-          <p className="text-sm text-gray-500 text-center mt-1">
-            This document is currently available in Hindi only.
-          </p>
-        </div>
-
-        {/* Body */}
-        <div className="px-6 py-4">
-          <div className="flex items-start gap-3 bg-blue-50 rounded-2xl p-4">
-            <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-blue-700 leading-relaxed">
-              The English version is coming soon! For now, please use the <strong>हिंदी</strong> template.
-            </p>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="px-6 pb-6 flex gap-3">
-          <button
-            onClick={() => {
-              if (onConfirm) onConfirm();
-              onClose();
-            }}
-            className="flex-1 bg-[#1e3a5f] text-white font-bold py-3 rounded-2xl text-sm hover:bg-[#16304f] transition-colors"
-          >
-            Use हिंदी Template
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// ── Language badge pill ────────────────────────────────────────────
-function LangBadge({ lang }: { lang: "hi" | "en" }) {
-  if (lang === "hi") {
-    return (
-      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-[#1e3a5f]/10 text-[#1e3a5f] leading-none tracking-wide">
-        हिं
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700 leading-none tracking-wide">
-      EN
-    </span>
-  );
-}
 // ── Recursive Folder Node and View Rendering ──────────────────────────
 interface FolderNode {
   name: string;
@@ -127,6 +121,7 @@ function FolderView({
       {/* Subfolders */}
       {subfolders.map(([folderKey, subNode]) => {
         const isFolderExpanded = expandedFolders[folderKey] || searchActive;
+        const icon = getCategoryIcon(subNode.name) || getCategoryIcon(folderKey);
         return (
           <div key={folderKey} className="w-full flex flex-col">
             <button
@@ -135,8 +130,11 @@ function FolderView({
               className="w-full flex items-center justify-between py-3.5 pr-4 hover:bg-gray-50 border-b border-gray-100 text-left transition-colors"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
-                  <Folder className="w-4 h-4 text-amber-500 fill-amber-200/50" />
+                <div className="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0 bg-amber-50">
+                  {icon
+                    ? <img src={icon} alt={subNode.name} className="w-9 h-9 object-cover rounded-xl" />
+                    : <span className="text-amber-500 text-xl">📁</span>
+                  }
                 </div>
                 <span className="text-gray-700 text-sm font-semibold leading-none">
                   {subNode.name}
@@ -180,8 +178,10 @@ function FolderView({
           style={{ paddingLeft: `${(level * 16) + 16}px` }}
           className="w-full flex items-center gap-3 py-3.5 pr-4 hover:bg-[#9b1c31]/5 text-left border-b border-gray-50 group transition-colors"
         >
-          {/* Language badge */}
-          <LangBadge lang={template.language as "hi" | "en"} />
+          {/* File/Document Icon */}
+          <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center flex-shrink-0 group-hover:bg-[#9b1c31]/10 transition-colors">
+            <FileText className="w-4 h-4 text-gray-400 group-hover:text-[#9b1c31] transition-colors" />
+          </div>
 
           {/* Template name */}
           <span className="flex-1 text-[#1e3a5f] text-sm font-medium group-hover:text-[#9b1c31] transition-colors leading-snug">
@@ -197,42 +197,23 @@ function FolderView({
 
 export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps) {
   const court = courts.find(c => c.id === courtId);
-  const title = court?.title || "Court";
-
   const availableLangs = useMemo(() => getAvailableLanguages(courtId), [courtId]);
-  const [language, setLanguage] = useState<Language>("hi");
+  const [language, setLanguage] = useState<Language>(() => {
+    return (storage.loadLanguage() as Language) || "hi";
+  });
+
+  const title = language === "hi" ? (court?.titleHi || court?.title || "Court") : (court?.title || "Court");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
-  const [showEnglishModal, setShowEnglishModal] = useState(false);
-  const [pendingTemplate, setPendingTemplate] = useState<TemplateFile | null>(null);
-
-  // Check if English templates actually exist
-  const hasEnglish = availableLangs.includes("en");
 
   // Switch language — always allowed now!
   const handleLangSwitch = (lang: Language) => {
     setLanguage(lang);
+    storage.saveLanguage(lang);
   };
 
   const handleTemplateClick = (template: TemplateFile) => {
-    if (language === "en" && template.language === "hi") {
-      setPendingTemplate(template);
-      setShowEnglishModal(true);
-      return;
-    }
     onSelectForm(template.id);
-  };
-
-  const handleModalConfirm = () => {
-    if (pendingTemplate) {
-      onSelectForm(pendingTemplate.id);
-      setPendingTemplate(null);
-    }
-  };
-
-  const handleModalClose = () => {
-    setShowEnglishModal(false);
-    setPendingTemplate(null);
   };
 
   // Get all templates for the court
@@ -240,26 +221,7 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
 
   // Filter templates choosing the best language representation
   const displayedTemplates = useMemo(() => {
-    const groups: Record<string, TemplateFile[]> = {};
-    for (const t of allTemplates) {
-      if (!groups[t.id]) groups[t.id] = [];
-      groups[t.id].push(t);
-    }
-
-    const selected: TemplateFile[] = [];
-    for (const [id, list] of Object.entries(groups)) {
-      const hiVer = list.find(t => t.language === "hi");
-      const enVer = list.find(t => t.language === "en");
-
-      if (language === "en") {
-        if (enVer) selected.push(enVer);
-        else if (hiVer) selected.push(hiVer);
-      } else {
-        if (hiVer) selected.push(hiVer);
-        else if (enVer) selected.push(enVer);
-      }
-    }
-    return selected;
+    return allTemplates.filter(t => t.language === language);
   }, [allTemplates, language]);
 
   // Search filter at the template level
@@ -282,7 +244,9 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
 
     for (const t of filteredTemplates) {
       // Find or create top-level category node
-      const topCatName = CATEGORY_DISPLAY_NAMES[t.category] || t.category;
+      const topCatName = language === "hi" 
+        ? (CATEGORY_DISPLAY_NAMES_HI[t.category] || CATEGORY_DISPLAY_NAMES[t.category] || t.category)
+        : (CATEGORY_DISPLAY_NAMES[t.category] || t.category);
       if (!trees[topCatName]) {
         trees[topCatName] = {
           name: topCatName,
@@ -296,8 +260,11 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
       if (t.subPath) {
         for (const s of t.subPath) {
           if (!currentNode.subfolders[s]) {
+            const folderDisplayName = language === "hi" 
+              ? (CATEGORY_DISPLAY_NAMES_HI[s] || CATEGORY_DISPLAY_NAMES[s] || s)
+              : (CATEGORY_DISPLAY_NAMES[s] || s);
             currentNode.subfolders[s] = {
-              name: CATEGORY_DISPLAY_NAMES[s] || s,
+              name: folderDisplayName,
               subfolders: {},
               templates: [],
             };
@@ -359,33 +326,20 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
             )}
           </div>
 
-          {/* Language toggle — always visible */}
-          <div className="flex items-center bg-gray-100 rounded-xl p-1 flex-shrink-0">
-            <button
-              onClick={() => handleLangSwitch("hi")}
-              className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${
-                language === "hi"
-                  ? "bg-[#1e3a5f] text-white shadow"
-                  : "text-gray-500 hover:text-gray-800"
-              }`}
-            >
-              हिं
-            </button>
-            <button
-              onClick={() => handleLangSwitch("en")}
-              className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all relative ${
-                language === "en"
-                  ? "bg-emerald-600 text-white shadow"
-                  : "text-gray-400 hover:text-gray-600"
-              }`}
-            >
-              EN
-            </button>
-          </div>
+
         </div>
 
         {/* Court title + stats bar */}
-        <div className="px-4 pb-3 flex items-center gap-2">
+        <div className="px-4 pb-3 flex items-center gap-3">
+          {court && COURT_LOGOS[court.id] && (
+            <div className="w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0 bg-gray-50 border border-gray-100">
+              <img
+                src={COURT_LOGOS[court.id]}
+                alt={title}
+                className="w-8 h-8 object-cover rounded-xl"
+              />
+            </div>
+          )}
           <h1 className="text-base font-extrabold text-[#1e3a5f]">{title}</h1>
           <span className="text-xs text-gray-400">•</span>
           <span className="text-xs text-gray-500 font-medium">
@@ -407,7 +361,7 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
       <div className="max-w-7xl mx-auto px-4 py-5 space-y-3">
 
         {/* No results */}
-        {categoryKeys.length === 0 && (
+        {filteredTemplates.length === 0 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -416,15 +370,15 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
             <div className="bg-gray-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
               <Search className="w-7 h-7 text-gray-400" />
             </div>
-            <h3 className="text-lg font-bold text-[#1e3a5f]">No templates found</h3>
+            <h3 className="text-lg font-bold text-[#1e3a5f]">{language === "hi" ? MESSAGES_HI.dashboard.noMatchFound : MESSAGES.dashboard.noMatchFound}</h3>
             <p className="text-gray-500 mt-1 text-sm">
-              {searchQuery ? "Try a different search" : "No templates available"}
+              {searchQuery ? (language === "hi" ? "कोई अन्य खोज प्रयास करें" : "Try a different search") : (language === "hi" ? "कोई टेम्पलेट उपलब्ध नहीं" : "No templates available")}
             </p>
           </motion.div>
         )}
 
-        {/* Category accordion */}
-        {categoryKeys.map((categoryName, catIdx) => {
+        {/* Category accordion for other folders */}
+        {categoryKeys.filter(k => k !== "General" && k !== "सामान्य फ़ाइलें").map((categoryName, catIdx) => {
           const rootNode = categoryTrees[categoryName];
           const isExpanded = expandedCategory === categoryName || searchQuery !== "";
 
@@ -443,7 +397,7 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: catIdx * 0.03 }}
-              className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+              className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-3"
             >
               {/* Category header */}
               <button
@@ -453,15 +407,20 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
                 className="w-full flex items-center justify-between px-4 py-4 hover:bg-gray-50 transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-[#9b1c31]/10 flex items-center justify-center flex-shrink-0">
-                    <FileText className="w-4 h-4 text-[#9b1c31]" />
+                  <div className="w-11 h-11 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0 bg-[#9b1c31]/5">
+                    {(() => {
+                      const icon = getCategoryIcon(categoryName);
+                      return icon
+                        ? <img src={icon} alt={categoryName} className="w-11 h-11 object-cover rounded-xl" />
+                        : <span className="text-2xl">📂</span>;
+                    })()}
                   </div>
                   <div className="text-left">
                     <h2 className="font-bold text-[#1e3a5f] text-sm leading-tight">
                       {categoryName}
                     </h2>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      {totalTemplates} document{totalTemplates !== 1 ? "s" : ""}
+                      {totalTemplates} {language === "hi" ? "दस्तावेज़" : "document"}{totalTemplates !== 1 && language !== "hi" ? "s" : ""}
                     </p>
                   </div>
                 </div>
@@ -494,14 +453,39 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
             </motion.div>
           );
         })}
+
+        {/* Flat Template List for "General" category */}
+        {(categoryTrees["General"] || categoryTrees["सामान्य फ़ाइलें"]) && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-3"
+          >
+            <div className="flex flex-col w-full">
+              {(categoryTrees["General"] || categoryTrees["सामान्य फ़ाइलें"]).templates.map((template, idx) => (
+                <button
+                  key={template.id}
+                  onClick={() => handleTemplateClick(template)}
+                  className={`w-full flex items-center gap-3 py-4 px-4 hover:bg-[#9b1c31]/5 text-left group transition-colors ${
+                    idx !== (categoryTrees["General"] || categoryTrees["सामान्य फ़ाइलें"]).templates.length - 1 ? "border-b border-gray-50" : ""
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+                    <FileText className="w-5 h-5 text-blue-500" />
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-[#1e3a5f] text-sm font-bold group-hover:text-[#9b1c31] transition-colors leading-tight">
+                      {template.name}
+                    </span>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-[#9b1c31] flex-shrink-0 transition-colors" />
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
       </div>
 
-      {/* ── English not available modal ── */}
-      <AnimatePresence>
-        {showEnglishModal && (
-          <EnglishComingSoonModal onClose={handleModalClose} onConfirm={handleModalConfirm} />
-        )}
-      </AnimatePresence>
     </div>
   );
 }

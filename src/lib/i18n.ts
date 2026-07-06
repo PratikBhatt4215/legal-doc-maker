@@ -24,196 +24,59 @@ export const translations = {
       backButton: "Back",
       disclaimer: "Disclaimer: This App is a productivity tool and not a substitute for professional legal judgment.",
       content: `
-# Terms and Conditions
+Terms and Conditions
+These Terms and Conditions ("Terms") govern the use of the mobile application 'Legal Drafting App' / 'Anand Draft Pro' ("App"), which is owned and operated by the App owner/developer ("Owner"). By downloading, installing, accessing, or using this App, the user ("User") agrees to be legally bound by these Terms. If the User does not agree, they must immediately uninstall the App and cease using it.
 
-**Last Updated: May 14, 2026**
+1. Nature of the App (Disclaimer regarding Legal Advice)
+1.1 This App is solely a technical drafting and document-formatting tool.
+1.2 This App does not provide any form of legal advice, legal opinion, legal representation, or legal consultation.
+1.3 Any drafts, templates, formats, or text created or edited through the App are for reference and convenience only.
+1.4 The User bears full responsibility for verifying the legal accuracy, applicability, regulatory compliance, and suitability of any document prepared using the App.
 
-Welcome to Legal Docs Maker. By accessing or using our application, you agree to be bound by these Terms and Conditions.
+2. User Responsibility and Professional Use
+2.1 This App is designed for use by lawyers, law students, clerks, and informed users.
+2.2 Use of the App by any individual does not create an attorney-client relationship, a fiduciary relationship, or a professional obligation between the Owner and the User.
+2.3 The User acknowledges that laws vary by jurisdiction and are subject to change based on amendments, interpretations, and court rulings, and that formatting and text may differ according to region and language. 
 
-## 1. Acceptance of Terms
+3. No Liability and Indemnification (Robust Clause)
+3.1 The Owner shall not be liable for any loss, damage, cost, claim, penalty, lawsuit, or adverse order arising from: the use or misuse of the App; reliance on drafts/templates; errors, omissions, or outdated content; or the rejection of the document by any court, authority, or forum.
 
-By creating an account and using Legal Docs Maker, you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions and our Privacy Policy.
+4. Data, Storage, and Privacy Disclaimer
+4.1 Unless otherwise stated, drafts are stored locally on the User's device.
+4.2 The Owner does not guarantee data backup, recovery, or security in the event of device failure, data deletion, or data corruption.
+4.3 The User is solely responsible for maintaining copies of their drafts and PDFs.
 
-## 2. Description of Service
+5. Intellectual Property Rights
+5.1 The App, its design, layout, UI, branding, and compiled templates are the exclusive intellectual property of the Owner.
+5.2 Copying, reverse engineering, reselling, redistributing, or using the App or templates for commercial purposes is strictly prohibited.
 
-Legal Docs Maker is a legal document creation and management platform designed to assist legal professionals in drafting documents for various courts in India. The service includes:
+6. Paid Features and No-Refund Policy
+6.1 Certain features may only be available through a paid subscription or a one-time purchase.
+6.2 All payments are final and non-refundable, regardless of usage, dissatisfaction, or discontinuation of use.
+6.3 The Owner reserves the right to modify prices, features, or plans without prior notice.
 
-- Document creation and editing tools
-- Court-specific form templates
-- PDF generation and export
-- Cloud storage and synchronization
-- Payment processing for premium features
+7. App Availability and Updates
+7.1 The Owner does not guarantee uninterrupted or error-free operation of the App. 
+7.2 The App may be updated, modified, suspended, or discontinued at any time without liability.
 
-## 3. User Accounts
+8. Limitation of Liability (Forum-Proof Clause)
+8.1 To the maximum extent permitted by law, the total liability of the Owner, if any, shall not exceed the amount paid by the User for the App or INR 100, whichever is lower.
+8.2 In no event shall the Owner be liable for indirect, consequential, or punitive damages.
 
-### 3.1 Registration
-- You must provide accurate and complete information during registration
-- You are responsible for maintaining the confidentiality of your account credentials
-- You must be at least 18 years old to use this service
-- One person or entity may maintain only one account
+9. Governing Law and Exclusive Jurisdiction
+9.1 These terms shall be governed by and construed in accordance with the laws of India.
+9.2 Exclusive jurisdiction shall vest solely in the competent courts of Guna, Madhya Pradesh, to the exclusion of any other forum.
 
-### 3.2 Account Security
-- You are responsible for all activities under your account
-- Notify us immediately of any unauthorized use
-- We reserve the right to suspend or terminate accounts that violate these terms
+10. Waiver of Consumer Forum and Third-Party Claims
+10.1 The User expressly agrees that the use of the App is voluntary and at their own risk.
+10.2 To the extent permitted by law, the User waives the right to initiate or maintain any claim against the Owner before a consumer forum, IT tribunal, civil court, or any other authority regarding issues arising from the use of the App.
 
-## 4. Use of Service
+11. Acceptance
+By clicking "I Agree," or by installing or using the App, the User confirms that they have fully read, understood, and accepted these terms and conditions.
 
-### 4.1 Permitted Use
-You may use Legal Docs Maker for:
-- Creating legal documents for professional purposes
-- Managing and organizing legal drafts
-- Exporting documents in PDF format
-- Collaborating with authorized team members
+Disclaimer: This App is a productivity tool and is not a substitute for professional legal advice. 
 
-### 4.2 Prohibited Use
-You may NOT:
-- Use the service for illegal purposes
-- Violate any applicable laws or regulations
-- Infringe on intellectual property rights
-- Upload malicious code or viruses
-- Attempt to gain unauthorized access
-- Resell or redistribute our services
-- Use automated systems to access the service
-
-## 5. Payment and Billing
-
-### 5.1 Fees
-- Document export fees are clearly displayed before payment
-- All payments are processed securely through Razorpay
-- Fees are non-refundable unless otherwise stated
-
-### 5.2 Payment Methods
-We accept:
-- Credit/Debit Cards
-- UPI
-- Net Banking
-- Digital Wallets
-
-## 6. Intellectual Property
-
-### 6.1 Our Rights
-- Legal Docs Maker owns all rights to the platform, software, and templates
-- Our trademarks, logos, and branding are protected
-- You may not copy, modify, or distribute our software
-
-### 6.2 Your Content
-- You retain ownership of documents you create
-- You grant us license to store and process your content
-- You are responsible for the content you create
-
-## 7. Professional Disclaimer
-
-**IMPORTANT: Legal Docs Maker is a productivity tool designed to assist legal professionals. It is NOT a substitute for professional legal judgment, advice, or representation.**
-
-- We do not provide legal advice
-- Documents generated should be reviewed by qualified legal professionals
-- We are not responsible for the legal accuracy or validity of documents
-- Users must ensure compliance with applicable laws and court rules
-- The service does not create an attorney-client relationship
-
-## 8. Data and Privacy
-
-### 8.1 Data Collection
-We collect and process data as described in our Privacy Policy, including:
-- Account information
-- Document content and metadata
-- Usage analytics
-- Payment information
-
-### 8.2 Data Security
-- We implement industry-standard security measures
-- Data is encrypted in transit and at rest
-- We cannot guarantee absolute security
-
-### 8.3 Data Retention
-- Active documents are retained as long as your account exists
-- We may retain data for legal or regulatory purposes
-- You may request data deletion subject to legal requirements
-
-## 9. Limitation of Liability
-
-TO THE MAXIMUM EXTENT PERMITTED BY LAW:
-
-- We provide the service "AS IS" without warranties
-- We are not liable for indirect, incidental, or consequential damages
-- Our total liability is limited to the amount you paid in the last 12 months
-- We are not responsible for third-party services or content
-
-## 10. Indemnification
-
-You agree to indemnify and hold harmless Legal Docs Maker, its officers, directors, employees, and agents from any claims, damages, or expenses arising from:
-
-- Your use of the service
-- Your violation of these terms
-- Your violation of any laws or third-party rights
-- Content you create or share
-
-## 11. Modifications to Service
-
-We reserve the right to:
-- Modify or discontinue features
-- Update pricing with notice
-- Change these terms (we will notify you)
-- Suspend service for maintenance
-
-## 12. Termination
-
-### 12.1 By You
-You may terminate your account at any time through account settings.
-
-### 12.2 By Us
-We may suspend or terminate your account if:
-- You violate these terms
-- You engage in fraudulent activity
-- Required by law
-- We discontinue the service
-
-### 12.3 Effect of Termination
-- Access to the service will be revoked
-- We may delete your data after a grace period
-- Outstanding payments remain due
-
-## 13. Dispute Resolution
-
-### 13.1 Governing Law
-These terms are governed by the laws of India.
-
-### 13.2 Jurisdiction
-Any disputes shall be subject to the exclusive jurisdiction of courts in [Your City], India.
-
-### 13.3 Arbitration
-Disputes may be resolved through arbitration as per the Arbitration and Conciliation Act, 1996.
-
-## 14. General Provisions
-
-### 14.1 Entire Agreement
-These terms constitute the entire agreement between you and Legal Docs Maker.
-
-### 14.2 Severability
-If any provision is found invalid, the remaining provisions continue in effect.
-
-### 14.3 No Waiver
-Failure to enforce any right does not waive that right.
-
-### 14.4 Assignment
-You may not assign these terms. We may assign our rights to affiliates or successors.
-
-## 15. Contact Information
-
-For questions about these Terms and Conditions:
-
-**Email:** support@legaldocsmaker.com
-**Address:** [Your Business Address]
-**Phone:** [Your Contact Number]
-
-## 16. Updates to Terms
-
-We may update these terms from time to time. Continued use after changes constitutes acceptance of the new terms.
-
----
-
-**By clicking "I agree" or continuing to use the service, you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions.**
+App Owner. All rights reserved.
       `
     },
 
@@ -250,196 +113,59 @@ We may update these terms from time to time. Continued use after changes constit
       backButton: "वापस",
       disclaimer: "अस्वीकरण: यह ऐप एक उत्पादकता उपकरण है और पेशेवर कानूनी निर्णय का विकल्प नहीं है।",
       content: `
-# नियम और शर्तें
+नियम और शर्तें
+ये नियम और शर्तें ("शर्तें") मोबाइल एप्लिकेशन 'Legal Drafting App' / 'Anand Draft Pro' ("ऐप") के इस्तेमाल को नियंत्रित करती हैं, जिसका मालिकाना हक और संचालन ऐप के मालिक/डेवलपर ("मालिक") के पास है। इस ऐप को डाउनलोड, इंस्टॉल, एक्सेस या इस्तेमाल करके, यूज़र ("यूज़र") इन शर्तों से कानूनी रूप से बंधे रहने के लिए सहमत होता है। अगर यूज़र सहमत नहीं है, तो उसे तुरंत ऐप को अनइंस्टॉल कर देना चाहिए और इसका इस्तेमाल बंद कर देना चाहिए।
 
-**अंतिम अपडेट: 14 मई 2026**
+1. ऐप का स्वरूप (कानूनी सलाह न देने का डिस्क्लेमर)
+1.1 यह ऐप केवल तकनीकी ड्राफ्टिंग और डॉक्यूमेंट-फॉर्मेटिंग टूल है। 
+1.2 यह ऐप किसी भी तरह की कानूनी सलाह, कानूनी राय, कानूनी प्रतिनिधित्व या कानूनी परामर्श नहीं देता है। 
+1.3 ऐप के ज़रिए बनाए या एडिट किए गए कोई भी ड्राफ्ट, टेम्प्लेट, फॉर्मेट या टेक्स्ट केवल संदर्भ और सुविधा के लिए हैं। 
+1.4 ऐप का इस्तेमाल करके तैयार किए गए किसी भी डॉक्यूमेंट की कानूनी सटीकता, लागू होने की योग्यता, नियमों के पालन और उपयुक्तता की जांच करने की पूरी ज़िम्मेदारी यूज़र की है।
 
-लीगल डॉक्स मेकर में आपका स्वागत है। हमारे एप्लिकेशन का उपयोग करके, आप इन नियमों और शर्तों से बंधे होने के लिए सहमत हैं।
+2. यूज़र की ज़िम्मेदारी और पेशेवर इस्तेमाल
+2.1 यह ऐप वकीलों, कानून के छात्रों, क्लर्कों और जानकारी रखने वाले यूज़र्स के इस्तेमाल के लिए बनाया गया है। 
+2.2 किसी भी व्यक्ति द्वारा ऐप का इस्तेमाल करने से मालिक और यूज़र के बीच वकील-क्लाइंट का रिश्ता, भरोसे का रिश्ता (fiduciary relationship) या पेशेवर ज़िम्मेदारी नहीं बनती है। 
+2.3 यूज़र यह मानता है कि कानून अधिकार क्षेत्र (jurisdiction) के हिसाब से अलग-अलग होते हैं और उनमें संशोधन, व्याख्या और अदालती फैसलों के आधार पर बदलाव हो सकते हैं और क्षेत्र एवं भाषा के अनुरूप फॉर्मेटिंग एवं टैक्स्ट भिन्न हो सकते हैं।
 
-## 1. शर्तों की स्वीकृति
+3. कोई दायित्व नहीं और क्षतिपूर्ति (मजबूत क्लॉज़)
+3.1 मालिक किसी भी नुकसान, क्षति, लागत, दावे, जुर्माने, मुकदमे या प्रतिकूल आदेश के लिए ज़िम्मेदार नहीं होगा जो इनसे उत्पन्न हों: ऐप का इस्तेमाल या गलत इस्तेमाल, ड्राफ्ट/टेम्प्लेट पर भरोसा करना, गलतियां, छूट या पुराना कंटेंट, किसी अदालत, प्राधिकरण या फोरम द्वारा डॉक्यूमेंट को अस्वीकार करना।
 
-लीगल डॉक्स मेकर पर खाता बनाकर और उसका उपयोग करके, आप स्वीकार करते हैं कि आपने इन नियमों और शर्तों तथा हमारी गोपनीयता नीति को पढ़, समझ लिया है और उनसे बंधे रहने के लिए सहमत हैं।
+4. डेटा, स्टोरेज और प्राइवेसी डिस्क्लेमर
+4.1 जब तक अन्यथा न कहा गया हो, ड्राफ्ट यूज़र के डिवाइस पर स्थानीय रूप से (locally) स्टोर किए जाते हैं। 
+4.2 मालिक डिवाइस के खराब होने, डेटा डिलीट होने या करप्ट होने की स्थिति में डेटा बैकअप, रिकवरी या सुरक्षा की गारंटी नहीं देता है। 
+4.3 यूज़र अपने ड्राफ़्ट और PDF की कॉपी रखने के लिए पूरी तरह से ज़िम्मेदार है।
 
-## 2. सेवा का विवरण
+5. बौद्धिक संपदा अधिकार
+5.1 ऐप, उसका डिज़ाइन, लेआउट, UI, ब्रांडिंग और कंपाइल किए गए टेम्प्लेट मालिक की विशेष बौद्धिक संपदा हैं। 
+5.2 ऐप या टेम्प्लेट की कॉपी करना, रिवर्स इंजीनियरिंग करना, दोबारा बेचना, दोबारा बांटना या कमर्शियल इस्तेमाल करना सख्त मना है।
 
-लीगल डॉक्स मेकर एक कानूनी दस्तावेज़ निर्माण और प्रबंधन मंच है जो भारत में विभिन्न अदालतों के लिए दस्तावेज़ तैयार करने में कानूनी पेशेवरों की सहायता के लिए डिज़ाइन किया गया है। सेवा में शामिल हैं:
+6. पेड फ़ीचर और नो-रिफंड पॉलिसी
+6.1 कुछ फ़ीचर केवल पेड सब्सक्रिप्शन या एक बार की खरीदारी के ज़रिए ही उपलब्ध हो सकते हैं। 
+6.2 सभी पेमेंट फ़ाइनल और नॉन-रिफंडेबल होते हैं, चाहे इस्तेमाल कैसा भी हो, असंतोष हो या इस्तेमाल बंद कर दिया जाए। 
+6.3 मालिक को बिना किसी पूर्व सूचना के कीमत, फ़ीचर या प्लान में बदलाव करने का अधिकार है।
 
-- दस्तावेज़ निर्माण और संपादन उपकरण
-- अदालत-विशिष्ट फॉर्म टेम्पलेट
-- पीडीएफ जनरेशन और निर्यात
-- क्लाउड स्टोरेज और सिंक्रोनाइजेशन
-- प्रीमियम सुविधाओं के लिए भुगतान प्रसंस्करण
+7. ऐप की उपलब्धता और अपडेट
+7.1 मालिक ऐप के बिना रुकावट या बिना किसी गड़बड़ी के चलने की गारंटी नहीं देता है। 
+7.2 ऐप को बिना किसी दायित्व के किसी भी समय अपडेट, संशोधित, निलंबित या बंद किया जा सकता है।
 
-## 3. उपयोगकर्ता खाते
+8. दायित्व की सीमा (फ़ोरम-प्रूफ़ क्लॉज़)
+8.1 कानून द्वारा अनुमत अधिकतम सीमा तक, मालिक का कुल दायित्व, यदि कोई हो, तो वह यूज़र द्वारा ऐप के लिए भुगतान की गई राशि या INR 100, जो भी कम हो, से अधिक नहीं होगा। 
+8.2 किसी भी स्थिति में मालिक अप्रत्यक्ष, परिणामी या दंडात्मक नुकसान के लिए ज़िम्मेदार नहीं होगा।
 
-### 3.1 पंजीकरण
-- पंजीकरण के दौरान आपको सटीक और पूर्ण जानकारी प्रदान करनी होगी
-- आप अपने खाते की साख की गोपनीयता बनाए रखने के लिए जिम्मेदार हैं
-- इस सेवा का उपयोग करने के लिए आपकी आयु कम से कम 18 वर्ष होनी चाहिए
-- एक व्यक्ति या संस्था केवल एक खाता बनाए रख सकती है
+9. लागू कानून और विशेष अधिकार क्षेत्र
+9.1 ये शर्तें भारत के कानूनों के अनुसार शासित और समझी जाएंगी।
+9.2 विशेष अधिकार क्षेत्र केवल गुना, मध्य प्रदेश की सक्षम अदालतों के पास होगा, न कि किसी अन्य फ़ोरम के पास।
 
-### 3.2 खाता सुरक्षा
-- आप अपने खाते के तहत सभी गतिविधियों के लिए जिम्मेदार हैं
-- किसी भी अनधिकृत उपयोग की तुरंत सूचना दें
-- हम उन खातों को निलंबित या समाप्त करने का अधिकार सुरक्षित रखते हैं जो इन शर्तों का उल्लंघन करते हैं
+10. उपभोक्ता फ़ोरम और थर्ड-पार्टी क्लेम से छूट
+10.1 यूज़र स्पष्ट रूप से सहमत है कि ऐप का इस्तेमाल स्वैच्छिक है और अपने जोखिम पर है। 
+10.2 यूज़र कानून द्वारा अनुमत सीमा तक, ऐप के इस्तेमाल से उत्पन्न मुद्दों के लिए मालिक के खिलाफ उपभोक्ता फ़ोरम, IT ट्रिब्यूनल, सिविल कोर्ट या किसी अन्य प्राधिकरण के समक्ष कोई भी दावा शुरू करने या बनाए रखने के अधिकार को छोड़ता है। 
 
-## 4. सेवा का उपयोग
+11. सहमति (Acceptance)
+"मैं सहमत हूँ" (I Agree) पर क्लिक करके, ऐप को इंस्टॉल करके या उसका इस्तेमाल करके, यूज़र यह पुष्टि करता हॅू कि उसने इन नियमों और शर्तों को पूरी तरह से पढ़, समझ और स्वीकार कर लिया है।
 
-### 4.1 अनुमत उपयोग
-आप लीगल डॉक्स मेकर का उपयोग कर सकते हैं:
-- पेशेवर उद्देश्यों के लिए कानूनी दस्तावेज़ बनाना
-- कानूनी ड्राफ्ट का प्रबंधन और व्यवस्थित करना
-- पीडीएफ प्रारूप में दस्तावेज़ निर्यात करना
-- अधिकृत टीम सदस्यों के साथ सहयोग करना
+डिस्क्लेमर: यह ऐप एक प्रोडक्टिविटी टूल है और पेशेवर कानूनी राय का विकल्प नहीं है। 
 
-### 4.2 निषिद्ध उपयोग
-आप नहीं कर सकते:
-- अवैध उद्देश्यों के लिए सेवा का उपयोग
-- किसी भी लागू कानून या विनियमों का उल्लंघन
-- बौद्धिक संपदा अधिकारों का उल्लंघन
-- दुर्भावनापूर्ण कोड या वायरस अपलोड करना
-- अनधिकृत पहुंच प्राप्त करने का प्रयास
-- हमारी सेवाओं को पुनर्विक्रय या पुनर्वितरण
-- स्वचालित सिस्टम का उपयोग करके सेवा तक पहुंचना
-
-## 5. भुगतान और बिलिंग
-
-### 5.1 शुल्क
-- भुगतान से पहले दस्तावेज़ निर्यात शुल्क स्पष्ट रूप से प्रदर्शित किए जाते हैं
-- सभी भुगतान Razorpay के माध्यम से सुरक्षित रूप से संसाधित किए जाते हैं
-- शुल्क गैर-वापसी योग्य हैं जब तक कि अन्यथा न कहा गया हो
-
-### 5.2 भुगतान के तरीके
-हम स्वीकार करते हैं:
-- क्रेडिट/डेबिट कार्ड
-- UPI
-- नेट बैंकिंग
-- डिजिटल वॉलेट
-
-## 6. बौद्धिक संपदा
-
-### 6.1 हमारे अधिकार
-- लीगल डॉक्स मेकर प्लेटफॉर्म, सॉफ्टवेयर और टेम्पलेट के सभी अधिकारों का मालिक है
-- हमारे ट्रेडमार्क, लोगो और ब्रांडिंग सुरक्षित हैं
-- आप हमारे सॉफ्टवेयर को कॉपी, संशोधित या वितरित नहीं कर सकते
-
-### 6.2 आपकी सामग्री
-- आप बनाए गए दस्तावेज़ों के स्वामित्व को बनाए रखते हैं
-- आप हमें अपनी सामग्री को संग्रहीत और संसाधित करने का लाइसेंस देते हैं
-- आप अपने द्वारा बनाई गई सामग्री के लिए जिम्मेदार हैं
-
-## 7. पेशेवर अस्वीकरण
-
-**महत्वपूर्ण: लीगल डॉक्स मेकर कानूनी पेशेवरों की सहायता के लिए डिज़ाइन किया गया एक उत्पादकता उपकरण है। यह पेशेवर कानूनी निर्णय, सलाह या प्रतिनिधित्व का विकल्प नहीं है।**
-
-- हम कानूनी सलाह प्रदान नहीं करते हैं
-- उत्पन्न दस्तावेजों की समीक्षा योग्य कानूनी पेशेवरों द्वारा की जानी चाहिए
-- हम दस्तावेजों की कानूनी सटीकता या वैधता के लिए जिम्मेदार नहीं हैं
-- उपयोगकर्ताओं को लागू कानूनों और अदालती नियमों का अनुपालन सुनिश्चित करना होगा
-- सेवा वकील-ग्राहक संबंध नहीं बनाती है
-
-## 8. डेटा और गोपनीयता
-
-### 8.1 डेटा संग्रह
-हम अपनी गोपनीयता नीति में वर्णित डेटा एकत्र और संसाधित करते हैं, जिसमें शामिल हैं:
-- खाता जानकारी
-- दस्तावेज़ सामग्री और मेटाडेटा
-- उपयोग विश्लेषण
-- भुगतान जानकारी
-
-### 8.2 डेटा सुरक्षा
-- हम उद्योग-मानक सुरक्षा उपायों को लागू करते हैं
-- डेटा ट्रांजिट और रेस्ट में एन्क्रिप्टेड है
-- हम पूर्ण सुरक्षा की गारंटी नहीं दे सकते
-
-### 8.3 डेटा प्रतिधारण
-- जब तक आपका खाता मौजूद है, सक्रिय दस्तावेज़ बनाए रखे जाते हैं
-- हम कानूनी या नियामक उद्देश्यों के लिए डेटा बनाए रख सकते हैं
-- आप कानूनी आवश्यकताओं के अधीन डेटा विलोपन का अनुरोध कर सकते हैं
-
-## 9. देयता की सीमा
-
-कानून द्वारा अनुमत अधिकतम सीमा तक:
-
-- हम सेवा "जैसी है" वारंटी के बिना प्रदान करते हैं
-- हम अप्रत्यक्ष, आकस्मिक या परिणामी क्षतियों के लिए उत्तरदायी नहीं हैं
-- हमारी कुल देयता पिछले 12 महीनों में आपके द्वारा भुगतान की गई राशि तक सीमित है
-- हम तृतीय-पक्ष सेवाओं या सामग्री के लिए जिम्मेदार नहीं हैं
-
-## 10. क्षतिपूर्ति
-
-आप लीगल डॉक्स मेकर, इसके अधिकारियों, निदेशकों, कर्मचारियों और एजेंटों को किसी भी दावे, क्षति या खर्च से क्षतिपूर्ति करने और हानिरहित रखने के लिए सहमत हैं:
-
-- सेवा का आपका उपयोग
-- इन शर्तों का आपका उल्लंघन
-- किसी भी कानून या तृतीय-पक्ष अधिकारों का आपका उल्लंघन
-- आपके द्वारा बनाई या साझा की गई सामग्री
-
-## 11. सेवा में संशोधन
-
-हम अधिकार सुरक्षित रखते हैं:
-- सुविधाओं को संशोधित या बंद करना
-- नोटिस के साथ मूल्य निर्धारण अपडेट करना
-- इन शर्तों को बदलना (हम आपको सूचित करेंगे)
-- रखरखाव के लिए सेवा को निलंबित करना
-
-## 12. समाप्ति
-
-### 12.1 आपके द्वारा
-आप खाता सेटिंग्स के माध्यम से किसी भी समय अपना खाता समाप्त कर सकते हैं।
-
-### 12.2 हमारे द्वारा
-हम आपके खाते को निलंबित या समाप्त कर सकते हैं यदि:
-- आप इन शर्तों का उल्लंघन करते हैं
-- आप धोखाधड़ी गतिविधि में संलग्न होते हैं
-- कानून द्वारा आवश्यक
-- हम सेवा बंद कर देते हैं
-
-### 12.3 समाप्ति का प्रभाव
-- सेवा तक पहुंच रद्द कर दी जाएगी
-- हम अनुग्रह अवधि के बाद आपका डेटा हटा सकते हैं
-- बकाया भुगतान देय रहते हैं
-
-## 13. विवाद समाधान
-
-### 13.1 शासी कानून
-ये शर्तें भारत के कानूनों द्वारा शासित हैं।
-
-### 13.2 क्षेत्राधिकार
-किसी भी विवाद [आपके शहर], भारत में अदालतों के विशेष अधिकार क्षेत्र के अधीन होगा।
-
-### 13.3 मध्यस्थता
-विवादों को मध्यस्थता और सुलह अधिनियम, 1996 के अनुसार मध्यस्थता के माध्यम से हल किया जा सकता है।
-
-## 14. सामान्य प्रावधान
-
-### 14.1 संपूर्ण समझौता
-ये शर्तें आपके और लीगल डॉक्स मेकर के बीच संपूर्ण समझौता हैं।
-
-### 14.2 पृथक्करणीयता
-यदि कोई प्रावधान अमान्य पाया जाता है, तो शेष प्रावधान प्रभावी रहते हैं।
-
-### 14.3 कोई छूट नहीं
-किसी अधिकार को लागू करने में विफलता उस अधिकार को माफ नहीं करती है।
-
-### 14.4 असाइनमेंट
-आप इन शर्तों को असाइन नहीं कर सकते। हम अपने अधिकारों को सहयोगियों या उत्तराधिकारियों को असाइन कर सकते हैं।
-
-## 15. संपर्क जानकारी
-
-इन नियमों और शर्तों के बारे में प्रश्नों के लिए:
-
-**ईमेल:** support@legaldocsmaker.com
-**पता:** [आपका व्यवसाय पता]
-**फोन:** [आपका संपर्क नंबर]
-
-## 16. शर्तों में अपडेट
-
-हम समय-समय पर इन शर्तों को अपडेट कर सकते हैं। परिवर्तनों के बाद निरंतर उपयोग नई शर्तों की स्वीकृति का गठन करता है।
-
----
-
-**"मैं सहमत हूं" पर क्लिक करके या सेवा का उपयोग जारी रखकर, आप स्वीकार करते हैं कि आपने इन नियमों और शर्तों को पढ़, समझ लिया है और उनसे बंधे रहने के लिए सहमत हैं।**
+ऐप ओनर। सभी अधिकार सुरक्षित।
       `
     },
 

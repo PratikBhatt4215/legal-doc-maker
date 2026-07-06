@@ -11,11 +11,16 @@ import { Editor } from "./components/Editor";
 import { Payment } from "./components/Payment";
 import { Profile } from "./components/Profile";
 import { AdminPanel } from "./components/AdminPanel";
+import { DraftsScreen } from "./components/DraftsScreen";
+import { SubscriptionScreen } from "./components/SubscriptionScreen";
 import { storage } from "../lib/storage";
+import { getDraftById, Draft } from "../lib/draftStorage";
 import { toast } from "sonner";
 import { Language } from "../lib/i18n";
 import { SavedPDFs } from "./components/SavedPDFs";
 import { App as CapacitorApp } from "@capacitor/app";
+import { UploadedFiles } from "./components/UploadedFiles";
+import { UploadedFileRecord } from "../lib/uploadedFileStorage";
 
 type Screen =
   | "splash"
@@ -25,8 +30,11 @@ type Screen =
   | "dashboard"
   | "court"
   | "editor"
+  | "drafts"
   | "profile"
-  "savedpdfs"
+  | "savedpdfs"
+  | "uploadedfiles"
+  | "subscription"
   | "admin";
 
 /**
@@ -81,6 +89,12 @@ export default function App() {
   const [userData, setUserData] = useState<any>(null);
   const [userId, setUserId] = useState<string>("");
   const [termsAccepted, setTermsAccepted] = useState(false);
+  // Draft-related state
+  const [activeDraftId, setActiveDraftId] = useState<string | undefined>(undefined);
+  const [draftInitialContent, setDraftInitialContent] = useState<string | undefined>(undefined);
+  // Custom file states
+  const [customFile, setCustomFile] = useState<File | undefined>(undefined);
+  const [customFileName, setCustomFileName] = useState<string>("");
 
   useEffect(() => {
     CapSplashScreen.hide().catch(() => {});
@@ -126,20 +140,62 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-  const listener = CapacitorApp.addListener("backButton", () => {
+    const listener = CapacitorApp.addListener("backButton", () => {
+      if (showPayment) {
+        setShowPayment(false);
+        setPaymentSuccessCallback(null);
+        return;
+      }
+      switch (currentScreen) {
+        case "dashboard":
+          CapacitorApp.exitApp();
+          break;
+        case "court":
+          goToDashboard();
+          break;
+        case "editor": {
+          const wasCustom = !!customFile;
+          setCustomFile(undefined);
+          setCustomFileName("");
+          setActiveDraftId(undefined);
+          setDraftInitialContent(undefined);
+          if (activeDraftId) {
+            setCurrentScreen("drafts");
+          } else if (wasCustom) {
+            setCurrentScreen("uploadedfiles");
+          } else {
+            setCurrentScreen("court");
+            saveNavState("court", selectedCourt, "");
+          }
+          break;
+        }
+        case "drafts":
+        case "profile":
+        case "savedpdfs":
+        case "uploadedfiles":
+          goToDashboard();
+          break;
+        case "admin":
+          setCurrentScreen("profile");
+          break;
+        case "terms":
+          setCurrentScreen("language");
+          break;
+        case "language":
+          setCurrentScreen("login");
+          break;
+        case "login":
+          CapacitorApp.exitApp();
+          break;
+        default:
+          goToDashboard();
+      }
+    });
 
-    if (currentScreen !== "dashboard") {
-      goToDashboard();
-    } else {
-      CapacitorApp.exitApp();
-    }
-
-  });
-
-  return () => {
-    listener.remove();
-  };
-}, [currentScreen]);
+    return () => {
+      listener.remove();
+    };
+  }, [currentScreen, customFile, activeDraftId, selectedCourt, showPayment]);
 
   // ── Splash complete: navigate appropriately ──────────────────────
   const handleSplashComplete = () => {
@@ -189,8 +245,45 @@ export default function App() {
 
   const handleFormSelect = (formId: string) => {
     setSelectedForm(formId);
+    setActiveDraftId(undefined);
+    setDraftInitialContent(undefined);
     setCurrentScreen("editor");
     saveNavState("editor", selectedCourt, formId);
+  };
+
+  const handleOpenDraft = (draft: Draft) => {
+    setSelectedForm(draft.formId);
+    setActiveDraftId(draft.id);
+    setDraftInitialContent(draft.content);
+    setCurrentScreen("editor");
+    saveNavState("editor", "", draft.formId);
+  };
+
+  const base64ToBlob = (base64: string, mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document") => {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+  };
+
+  const handleOpenFileRecord = (record: UploadedFileRecord) => {
+    try {
+      const blob = base64ToBlob(record.base64Data);
+      const file = new File([blob], record.name, { type: blob.type });
+
+      setCustomFile(file);
+      setCustomFileName(record.name);
+      setSelectedForm("custom_file");
+      setActiveDraftId(undefined);
+      setDraftInitialContent(undefined);
+      setCurrentScreen("editor");
+    } catch (err) {
+      toast.error("Failed to decode and open custom document.");
+      console.error(err);
+    }
   };
 
   const goToDashboard = () => {
@@ -199,6 +292,12 @@ export default function App() {
   };
 
   const handleExportPDF = (onSuccess: () => void) => {
+    const { active } = storage.loadSubscription();
+    if (active) {
+      toast.success("Premium Active! Generating PDF...");
+      onSuccess();
+      return;
+    }
     setPaymentSuccessCallback(() => onSuccess);
     setShowPayment(true);
   };
@@ -250,8 +349,9 @@ export default function App() {
           onSelectCourt={handleCourtSelect}
           onSelectForm={handleFormSelect}
           onOpenProfile={() => setCurrentScreen("profile")}
-          onOpenTemplates={() => setCurrentScreen("court")}
+          onOpenUploadedFiles={() => setCurrentScreen("uploadedfiles")}
           onOpenSavedPDFs={() => setCurrentScreen("savedpdfs")}
+          onOpenDrafts={() => setCurrentScreen("drafts")}
           userData={userData}
         />
       )}
@@ -267,11 +367,33 @@ export default function App() {
       {currentScreen === "editor" && (
         <Editor
           formId={selectedForm}
+          initialContent={draftInitialContent}
+          draftId={activeDraftId}
+          customFile={customFile}
+          customFileName={customFileName}
           onBack={() => {
-            setCurrentScreen("court");
-            saveNavState("court", selectedCourt, "");
+            const wasCustom = !!customFile;
+            setCustomFile(undefined);
+            setCustomFileName("");
+            setActiveDraftId(undefined);
+            setDraftInitialContent(undefined);
+            if (activeDraftId) {
+              setCurrentScreen("drafts");
+            } else if (wasCustom) {
+              setCurrentScreen("uploadedfiles");
+            } else {
+              setCurrentScreen("court");
+              saveNavState("court", selectedCourt, "");
+            }
           }}
           onExportPDF={handleExportPDF}
+        />
+      )}
+
+      {currentScreen === "drafts" && (
+        <DraftsScreen
+          onBack={goToDashboard}
+          onOpenDraft={handleOpenDraft}
         />
       )}
 
@@ -280,16 +402,31 @@ export default function App() {
           onBack={goToDashboard}
           onLogout={handleLogout}
           onOpenAdmin={() => setCurrentScreen("admin")}
+          onOpenSubscription={() => setCurrentScreen("subscription")}
           isAdmin={true}
           userData={userData}
         />
       )}
 
+      {currentScreen === "subscription" && (
+        <SubscriptionScreen
+          onBack={() => setCurrentScreen("profile")}
+          onSuccess={() => setCurrentScreen("profile")}
+        />
+      )}
+
       {currentScreen === "savedpdfs" && (
-  <SavedPDFs
-    onBack={goToDashboard}
-  />
-)}
+        <SavedPDFs
+          onBack={goToDashboard}
+        />
+      )}
+
+      {currentScreen === "uploadedfiles" && (
+        <UploadedFiles
+          onBack={goToDashboard}
+          onOpenFileRecord={handleOpenFileRecord}
+        />
+      )}
 
       {currentScreen === "admin" && (
         <AdminPanel onBack={() => setCurrentScreen("profile")} />

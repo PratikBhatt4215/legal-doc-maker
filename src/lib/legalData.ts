@@ -4,42 +4,72 @@ export const courts = [
   {
     id: "high-court",
     title: "High Court",
+    titleHi: "उच्च न्यायालय",
     description: "WP, MCRC, CRA, SA, WA",
+    descriptionHi: "डब्ल्यूपी, एमसीआरसी, सीआरए, एसए, डब्लूए",
     icon: Scale,
     color: "#9b1c31"
   },
   {
     id: "district-court",
     title: "District Court",
+    titleHi: "जिला न्यायालय",
     description: "Criminal, Civil, Claims, NI Act",
+    descriptionHi: "आपराधिक, दीवानी, दावे, एनआई एक्ट",
     icon: Building2,
     color: "#9b1c31"
   },
   {
     id: "family-court",
     title: "Family Court",
+    titleHi: "पारिवारिक न्यायालय",
     description: "Divorce, Maintenance, Consent",
+    descriptionHi: "तलाक, भरण-पोषण, सहमति",
     icon: Users,
     color: "#9b1c31"
   },
   {
     id: "juvenile-court",
     title: "Juvenile Court",
+    titleHi: "किशोर न्यायालय",
     description: "Bail, Appeals, JJ Act",
+    descriptionHi: "जमानत, अपील, जेजे एक्ट",
     icon: Baby,
     color: "#9b1c31"
   },
   {
     id: "revenue-court",
     title: "Revenue Court",
+    titleHi: "राजस्व न्यायालय",
     description: "Tehsil, SDM, Collector, Commissioner",
+    descriptionHi: "तहसील, एसडीएम, कलेक्टर, कमिश्नर",
     icon: Landmark,
     color: "#9b1c31"
   },
   {
     id: "forum-court",
     title: "Forum Court",
+    titleHi: "फोरम न्यायालय",
     description: "Consumer cases, Administrative disputes",
+    descriptionHi: "उपभोक्ता मामले, प्रशासनिक विवाद",
+    icon: MessageSquare,
+    color: "#9b1c31"
+  },
+  {
+    id: "registrar",
+    title: "Registrar",
+    titleHi: "रजिस्ट्रार",
+    description: "Property Deeds, Wills, Registration",
+    descriptionHi: "संपत्ति विलेख, वसीयत, पंजीकरण",
+    icon: Building2,
+    color: "#9b1c31"
+  },
+  {
+    id: "file",
+    title: "General Files",
+    titleHi: "सामान्य फ़ाइलें",
+    description: "Commonly used files and affidavits",
+    descriptionHi: "आमतौर पर उपयोग की जाने वाली फ़ाइलें",
     icon: MessageSquare,
     color: "#9b1c31"
   }
@@ -78,5 +108,12 @@ export const courtForms: Record<string, Array<{ id: string; name: string; descri
   "forum-court": [
     { id: "consumer", name: "Consumer Cases", description: "Consumer protection disputes" },
     { id: "administrative", name: "Administrative Disputes", description: "Administrative tribunal matters" }
+  ],
+  "registrar": [
+    { id: "deeds", name: "Deeds and Agreements", description: "Sale deeds, lease, partition, etc." },
+    { id: "wills", name: "Wills and Trusts", description: "Testamentary documents" }
+  ],
+  "file": [
+    { id: "general", name: "General Files", description: "Common forms" }
   ]
 };

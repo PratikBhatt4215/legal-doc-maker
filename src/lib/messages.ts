@@ -45,7 +45,7 @@ export const MESSAGES = {
 
   // ── Dashboard Screen ──
   dashboard: {
-    welcome:            "Welcome 👋",
+    welcome:            "Welcome to 👋",
     appTitle:           "Legal Docs Maker",
     profileFallback:    "Profile",
     searchPlaceholder:  "Search legal drafts, courts, documents...",
@@ -97,7 +97,7 @@ export const MESSAGES = {
     btnPhonePe:         "PhonePe",
     btnCard:            "Credit/Debit Card",
     feeLabel:           "Document Export Fee",
-    feeAmount:          "₹99",
+    feeAmount:          "₹10",
     successToast:       "Payment successful!",
     failedToast:        "Payment cancelled or failed",
     errorToast:         "Payment system error",
@@ -116,16 +116,110 @@ export const MESSAGES = {
 /**
  * Resolve a Firebase Auth error code to a user-friendly message.
  */
-export function getAuthErrorMessage(code: string): string {
+export function getAuthErrorMessage(code: string, language: string = "en"): string {
+  const M = language === "hi" ? MESSAGES_HI.auth : MESSAGES.auth;
   const map: Record<string, string> = {
-    "auth/email-already-in-use":   MESSAGES.auth.emailAlreadyInUse,
-    "auth/weak-password":          MESSAGES.auth.weakPassword,
-    "auth/invalid-email":          MESSAGES.auth.invalidEmail,
-    "auth/user-not-found":         MESSAGES.auth.userNotFound,
-    "auth/invalid-credential":     MESSAGES.auth.invalidCredential,
-    "auth/wrong-password":         MESSAGES.auth.wrongPassword,
-    "auth/too-many-requests":      MESSAGES.auth.tooManyRequests,
-    "auth/network-request-failed": MESSAGES.auth.networkFailed,
+    "auth/email-already-in-use":   M.emailAlreadyInUse,
+    "auth/weak-password":          M.weakPassword,
+    "auth/invalid-email":          M.invalidEmail,
+    "auth/user-not-found":         M.userNotFound,
+    "auth/invalid-credential":     M.invalidCredential,
+    "auth/wrong-password":         M.wrongPassword,
+    "auth/too-many-requests":      M.tooManyRequests,
+    "auth/network-request-failed": M.networkFailed,
   };
-  return map[code] ?? MESSAGES.auth.genericError;
+  return map[code] ?? M.genericError;
 }
+
+export const MESSAGES_HI = {
+  auth: {
+    emailAlreadyInUse:   "यह ईमेल पहले से पंजीकृत है। कृपया इसके बजाय लॉग इन करें।",
+    weakPassword:        "पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।",
+    invalidEmail:        "कृपया एक मान्य ईमेल पता दर्ज करें।",
+    userNotFound:        "इस ईमेल से कोई खाता नहीं मिला। कृपया साइन अप करें।",
+    invalidCredential:   "इस ईमेल से कोई खाता नहीं मिला। कृपया साइन अप करें।",
+    wrongPassword:       "गलत पासवर्ड। कृपया पुनः प्रयास करें।",
+    tooManyRequests:     "बहुत सारे विफल प्रयास। कृपया बाद में पुनः प्रयास करें।",
+    networkFailed:       "नेटवर्क त्रुटि। कृपया अपना इंटरनेट कनेक्शन जांचें।",
+    genericError:        "एक त्रुटि हुई। कृपया पुनः प्रयास करें।",
+    emailRequired:       "कृपया पहले अपना ईमेल पता दर्ज करें।",
+    passwordResetSent:   "पासवर्ड रीसेट ईमेल भेजा गया! कृपया अपना इनबॉक्स देखें।",
+    passwordResetFailed: "पासवर्ड रीसेट ईमेल भेजने में विफल। कृपया पुनः प्रयास करें।",
+  },
+  loginScreen: {
+    tabLogin:          "लॉग इन",
+    tabSignUp:         "साइन अप",
+    placeholderName:   "पूरा नाम",
+    placeholderMobile: "मोबाइल नंबर",
+    placeholderEmail:  "ईमेल पता",
+    placeholderPass:   "पासवर्ड",
+    btnLogin:          "लॉग इन करें",
+    btnSignUp:         "खाता बनाएं",
+    btnLoading:        "कृपया प्रतीक्षा करें...",
+    forgotPassword:    "पासवर्ड भूल गए?",
+    noAccount:         "खाता नहीं है?",
+    haveAccount:       "क्या आपके पास पहले से खाता है?",
+    switchToSignUp:    "साइन अप करें",
+    switchToLogin:     "लॉग इन करें",
+    logoAlt:           "लीगल डॉक्स मेकर",
+  },
+  dashboard: {
+    welcome:            "नमस्ते 👋",
+    appTitle:           "लीगल डॉक्स मेकर",
+    profileFallback:    "प्रोफ़ाइल",
+    searchPlaceholder:  "कानूनी ड्राफ्ट, न्यायालय, दस्तावेज़ खोजें...",
+    searchBarTop:       "कानूनी दस्तावेज़ खोजें...",
+    suggestionsLabel:   "सुझाव",
+    recentLabel:        "हाल की खोजें",
+    noMatchFound:       "कोई मेल खाने वाला दस्तावेज़ नहीं मिला",
+    noCourtsFound:      "कोई न्यायालय नहीं मिला",
+    noCourtsHint:       "कुछ और खोजने का प्रयास करें",
+    recentSearches:     ["हाई कोर्ट जमानत", "तलाक याचिका", "संपत्ति बिक्री विलेख"],
+  },
+  editor: {
+    back:               "वापस",
+    langEnglish:        "English",
+    langHindi:          "हिंदी",
+    saveDraft:          "ड्राफ्ट सहेजें",
+    exportPDF:          "पीडीएफ निर्यात करें",
+    editorPlaceholder:  "अपना कानूनी दस्तावेज़ यहाँ टाइप करना शुरू करें...",
+    signatureLabel:     "अधिवक्ता के हस्ताक्षर",
+    signaturePrompt:    "हस्ताक्षर जोड़ने के लिए क्लिक करें",
+    stampLabel:         "मोहर",
+    stampPrompt:        "मोहर जोड़ने के लिए क्लिक करें",
+    draftSaved:         "ड्राफ्ट सफलतापूर्वक सहेजा गया!",
+  },
+  profile: {
+    backToDashboard:    "डैशबोर्ड पर वापस जाएँ",
+    logout:             "लॉग आउट",
+    adminPanel:         "व्यवस्थापक पैनल",
+    defaultName:        "अधिवक्ता का नाम",
+    defaultEmail:       "advocate@example.com",
+    defaultMobile:      "+91 98765 43210",
+    userAlt:            "उपयोगकर्ता",
+    documentsCreated:   "बनाए गए दस्तावेज़",
+    totalSpent:         "कुल खर्च",
+    savedDrafts:        "सहेजे गए ड्राफ्ट",
+    paymentHistory:     "भुगतान इतिहास",
+  },
+  payment: {
+    title:              "भुगतान पूरा करें",
+    subtitle:           "अपनी भुगतान विधि चुनें",
+    btnUPI:             "UPI से भुगतान करें",
+    btnGooglePay:       "Google Pay",
+    btnPhonePe:         "PhonePe",
+    btnCard:            "क्रेडिट/डेबिट कार्ड",
+    feeLabel:           "दस्तावेज़ निर्यात शुल्क",
+    feeAmount:          "₹10",
+    successToast:       "भुगतान सफल!",
+    failedToast:        "भुगतान रद्द या विफल हो गया",
+    errorToast:         "भुगतान सिस्टम त्रुटि",
+    appName:            "लीगल डॉक्स मेकर",
+    description:        "दस्तावेज़ निर्यात शुल्क",
+    googlePayAlt:       "Google Pay",
+  },
+  general: {
+    genericError: "कुछ गलत हो गया। कृपया पुनः प्रयास करें।",
+    networkError: "कोई इंटरनेट कनेक्शन नहीं। कृपया अपना नेटवर्क जांचें।",
+  },
+};

@@ -3,6 +3,16 @@
    Clean WYSIWYG Print Layout (Dynamic ContentEditable Edition)
    ========================================================================== */
 
+/* ── Smooth bottom-sheet animations ── */
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 /* ── Grey Background & Page Gaps (MS Word Print Layout) ── */
 
 .legal-editable-field.is-empty {
@@ -31,25 +41,26 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 0 1px rgba(0, 0, 0, 0.1) !important;
   position: relative !important;
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  text-rendering: auto;
 }
 
 /* ── Typography (Strictly Native) ── */
 .legal-doc,
 .legal-doc *,
 .legal-doc-container,
-.legal-doc-container * {
-  font-family: 'Nirmala UI', sans-serif !important;
+.legal-doc-container *,
+.docx-wrapper > section.docx article,
+.docx-wrapper > section.docx article * {
+  font-family: 'Nirmala UI', 'Times New Roman', serif !important;
 }
 
 .legal-doc,
 .legal-doc-container {
-  font-size: 11.2pt !important;
-  /* Perfectly matched to MS Word */
+  font-size: 12pt;
   color: #111;
   word-wrap: break-word !important;
   /* Dynamic line spacing */
-  line-height: var(--document-line-spacing, inherit) !important;
+  line-height: var(--document-line-spacing, inherit);
 }
 
 .legal-doc p,
@@ -58,7 +69,13 @@
   white-space: pre-wrap !important;
   /* Minimal gap between paragraphs */
   margin-bottom: 6px !important; /* Slightly increased margin-bottom for better paragraph separation with line spacing */
-  line-height: var(--document-line-spacing, inherit) !important;
+  line-height: var(--document-line-spacing, inherit);
+}
+
+/* If a custom line spacing is selected, override paragraph line heights */
+.has-custom-line-spacing p,
+.has-custom-line-spacing p * {
+  line-height: var(--document-line-spacing) !important;
 }
 
 /* ── Perfect Left Alignment (Hanging Indent Normalization) ── */
@@ -99,7 +116,6 @@
 .docx-wrapper>section.docx article h3 {
   font-weight: bold !important;
   text-decoration: underline !important;
-  font-size: 12pt !important;
   margin-top: 18px !important;
   margin-bottom: 8px !important;
 }
@@ -147,7 +163,11 @@
   word-break: break-word !important;
   overflow-wrap: break-word !important;
   font: inherit !important;
+  font-size: inherit !important;
+  font-family: inherit !important;
+  font-weight: inherit !important;
   line-height: inherit !important;
+  color: inherit !important;
   background: transparent !important;
   -webkit-tap-highlight-color: transparent !important;
   padding: 0 !important;
@@ -155,11 +175,20 @@
   box-shadow: none !important;
 }
 
+.legal-editable-field * {
+  font-size: inherit !important;
+  font-family: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
+  color: inherit !important;
+}
+
 /* Article cursor always visible — the single editing surface */
 article[contenteditable="true"] {
   caret-color: #111 !important;
   outline: none !important;
   cursor: text !important;
+  -webkit-touch-callout: none !important;
 }
 
 /* Kill ALL browser-injected backgrounds when focused or active */
@@ -185,30 +214,69 @@ article[contenteditable="true"] {
   color: #111 !important;
   background: transparent !important;
   vertical-align: baseline !important;
-  padding: 0 !important;
+  padding: 2px 4px !important;
+  margin: 0 -1px !important;
   outline: none !important;
+  font-size: inherit !important;
+  font-family: inherit !important;
+  /* Ensure an empty span has visible height */
+  min-height: 1em !important;
+}
+
+/* Empty field cursor — place a blinking caret placeholder so user knows it's tappable */
+.legal-editable-field.is-empty:empty::before {
+  content: '\00a0'; /* non-breaking space keeps the span from collapsing */
+  pointer-events: none;
+  opacity: 0; /* invisible but occupies space so cursor lands correctly */
 }
 
 /* ── 2. Filled State: dotted line removed, typed text flows inline ── */
 .legal-editable-field.has-value {
   display: inline !important;
-  color: #111 !important;
+  color: inherit !important;
   font-weight: inherit !important;
+  font-size: inherit !important;
+  font-family: inherit !important;
+  line-height: inherit !important;
   background: transparent !important;
+  border: none !important;
   border-bottom: none !important;
+  text-decoration: none !important;
+  box-shadow: none !important;
   padding: 0 !important;
+  margin: 0 !important;
   outline: none !important;
+  min-width: unset !important;
+  min-height: unset !important;
 }
 
-
-
-/* Explicit style overrides for bold and underline tags inside editable fields */
-.legal-editable-field b,
-.legal-editable-field strong {
-  font-weight: bold !important;
+/* Kill border/underline that parent <u> or <span> elements from docx may inherit into the field */
+.legal-editable-field.has-value,
+.legal-editable-field.has-value *,
+.legal-editable-field.has-value::before,
+.legal-editable-field.has-value::after {
+  border-bottom: none !important;
+  text-decoration: none !important;
+  border: none !important;
 }
-.legal-editable-field u {
+
+/* But allow explicit <u> tags typed by the user inside a filled field */
+.legal-editable-field.has-value u {
   text-decoration: underline !important;
+}
+
+/* Force strip docx template-injected underlines from parent/grandparent wrapper elements when a field has value */
+span:has(.legal-editable-field.has-value),
+u:has(.legal-editable-field.has-value),
+p:has(.legal-editable-field.has-value),
+div:has(.legal-editable-field.has-value),
+font:has(.legal-editable-field.has-value) {
+  text-decoration: none !important;
+  border-bottom: none !important;
+}
+.legal-editable-field.has-value b,
+.legal-editable-field.has-value strong {
+  font-weight: bold !important;
 }
 
 .legal-editable-field.td-field,

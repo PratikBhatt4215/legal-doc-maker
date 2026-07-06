@@ -1,4 +1,5 @@
 // Razorpay Integration Helper
+import { toast } from 'sonner';
 
 export interface RazorpayOptions {
   amount: number;
@@ -12,6 +13,8 @@ export interface RazorpayOptions {
     email: string;
     contact: string;
   };
+  prefillMethod?: string;
+  prefillProvider?: string;
 }
 
 declare global {
@@ -22,6 +25,10 @@ declare global {
 
 export const initRazorpay = (): Promise<boolean> => {
   return new Promise((resolve) => {
+    if (document.querySelector('script[src*="checkout.razorpay.com"]')) {
+      resolve(true);
+      return;
+    }
     const script = document.createElement('script');
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
     script.onload = () => resolve(true);
@@ -33,27 +40,25 @@ export const initRazorpay = (): Promise<boolean> => {
 export const openRazorpayCheckout = async (options: RazorpayOptions) => {
   const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
 
-  // Check if Razorpay is configured
+  // Demo mode
   if (!razorpayKey || !razorpayKey.startsWith('rzp_')) {
     console.warn('Razorpay not configured. Running in demo mode.');
-    // Simulate payment in demo mode
     setTimeout(() => {
       const demoPaymentId = 'demo_pay_' + Date.now();
-      alert('Demo Mode: Payment simulated successfully!\n\nPayment ID: ' + demoPaymentId + '\n\nTo enable real payments, add VITE_RAZORPAY_KEY_ID to .env file.');
+      toast.info('Demo Mode: Payment simulated successfully!', { duration: 5000 });
       options.onSuccess(demoPaymentId);
     }, 1500);
     return;
   }
 
   const res = await initRazorpay();
-
   if (!res) {
-    alert('Razorpay SDK failed to load. Please check your internet connection.');
+    alert('Payment gateway failed to load. Please check your internet connection.');
     options.onFailure({ message: 'Failed to load payment gateway' });
     return;
   }
 
-  const razorpayOptions = {
+  const razorpayOptions: any = {
     key: razorpayKey,
     amount: options.amount * 100, // Convert to paise
     currency: options.currency,
@@ -63,19 +68,21 @@ export const openRazorpayCheckout = async (options: RazorpayOptions) => {
     handler: function (response: any) {
       options.onSuccess(response.razorpay_payment_id);
     },
-    prefill: options.userInfo || {
-      name: 'User',
-      email: 'user@example.com',
-      contact: '9999999999'
+    prefill: {
+      ...(options.userInfo || {
+        name: 'User',
+        email: 'user@example.com',
+        contact: '9999999999',
+      }),
+      method: options.prefillMethod,
+      provider: options.prefillProvider
     },
-    theme: {
-      color: '#1e3a5f'
-    },
+    theme: { color: '#1e3a5f' },
     modal: {
-      ondismiss: function() {
+      ondismiss: function () {
         options.onFailure({ message: 'Payment cancelled by user' });
-      }
-    }
+      },
+    },
   };
 
   const paymentObject = new window.Razorpay(razorpayOptions);
