@@ -220,7 +220,7 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
                 border: "1px solid #bfdbfe"
               }}>
                 <Check size={10} strokeWidth={3.5} />
-                <span>Verified User</span>
+                <span>{language === "hi" ? "सत्यापित उपयोगकर्ता" : "Verified User"}</span>
               </div>
             </div>
 
@@ -271,10 +271,10 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
               </div>
               <div>
                 <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "white" }}>
-                  Admin Panel
+                  {language === "hi" ? "व्यवस्थापक पैनल" : "Admin Panel"}
                 </h4>
                 <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>
-                  Access your admin dashboard
+                  {language === "hi" ? "अपना व्यवस्थापक डैशबोर्ड एक्सेस करें" : "Access your admin dashboard"}
                 </p>
               </div>
             </div>
@@ -316,10 +316,12 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
               </div>
               <div>
                 <span style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  Subscription Plan
+                  {language === "hi" ? "सदस्यता योजना" : "Subscription Plan"}
                 </span>
                 <h3 style={{ margin: "2px 0 0", fontSize: 16, fontWeight: 800, color: subStatus.active ? "#7e22ce" : "#1e293b" }}>
-                  {subStatus.active ? "Premium Plan" : "Free / Demo Plan"}
+                  {subStatus.active
+                    ? (language === "hi" ? "प्रीमियम प्लान" : "Premium Plan")
+                    : (language === "hi" ? "निःशुल्क / डेमो प्लान" : "Free / Demo Plan")}
                 </h3>
               </div>
             </div>
@@ -333,7 +335,9 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
               padding: "4px 12px",
               borderRadius: "9999px"
             }}>
-              {subStatus.active ? "Active" : "Get Premium"}
+              {subStatus.active
+                ? (language === "hi" ? "सक्रिय" : "Active")
+                : (language === "hi" ? "प्रीमियम लें" : "Get Premium")}
             </span>
           </div>
 
@@ -341,15 +345,15 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 }}>
             <p style={{ margin: 0, fontSize: 12, color: "#64748b", lineHeight: 1.5, maxWidth: "65%" }}>
               {subStatus.active
-                ? "Unlimited drafts, priority support and advanced features"
-                : "Unlock unlimited PDF exports and all draft templates for a month."}
+                ? (language === "hi" ? "असीमित ड्राफ्ट, प्राथमिकता सहायता और उन्नत सुविधाएँ" : "Unlimited drafts, priority support and advanced features")
+                : (language === "hi" ? "एक माह के लिए असीमित PDF निर्यात और सभी ड्राफ्ट टेम्पलेट अनलॉक करें।" : "Unlock unlimited PDF exports and all draft templates for a month.")}
             </p>
             <div style={{ textAlign: "right" }}>
               <span style={{ fontSize: 24, fontWeight: 900, color: "#0f172a" }}>
                 ₹350
               </span>
               <p style={{ margin: "2px 0 0", fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>
-                per month
+                {language === "hi" ? "प्रति माह" : "per month"}
               </p>
             </div>
           </div>
@@ -362,8 +366,8 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
               <Clock size={13} />
               <span style={{ fontSize: 12, fontWeight: 500 }}>
                 {subStatus.active && subStatus.expiresAt
-                  ? `Valid till ${new Date(subStatus.expiresAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`
-                  : "No active membership"}
+                  ? `${language === "hi" ? "वैध है" : "Valid till"} ${new Date(subStatus.expiresAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`
+                  : (language === "hi" ? "कोई सक्रिय सदस्यता नहीं" : "No active membership")}
               </span>
             </div>
             
@@ -378,7 +382,9 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
                 gap: 2
               }}
             >
-              <span>{subStatus.active ? "Manage Plan" : "Upgrade Plan"}</span>
+              <span>{subStatus.active
+                ? (language === "hi" ? "प्लान प्रबंधित करें" : "Manage Plan")
+                : (language === "hi" ? "प्लान अपग्रेड करें" : "Upgrade Plan")}</span>
               <ChevronRight size={13} strokeWidth={3} />
             </span>
           </div>
@@ -387,7 +393,7 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
         {/* Overview Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
-            Overview
+            {language === "hi" ? "सारांश" : "Overview"}
           </h3>
           <a
             href="#"
@@ -405,7 +411,7 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
               gap: 2
             }}
           >
-            <span>View All</span>
+            <span>{language === "hi" ? "सभी देखें" : "View All"}</span>
             <ChevronRight size={13} strokeWidth={3} />
           </a>
         </div>
@@ -549,10 +555,10 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
               </div>
               <div>
                 <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
-                  Payment History
+                  {language === "hi" ? "भुगतान इतिहास" : "Payment History"}
                 </h4>
                 <p style={{ margin: 0, fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                  View your all transaction history
+                  {language === "hi" ? "अपना सभी लेन-देन इतिहास देखें" : "View your all transaction history"}
                 </p>
               </div>
             </div>
@@ -631,10 +637,10 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
               </div>
               <div>
                 <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#ef4444" }}>
-                  Logout
+                  {language === "hi" ? "लॉगआउट" : "Logout"}
                 </h4>
                 <p style={{ margin: 0, fontSize: 11, color: "#ef4444", opacity: 0.8, marginTop: 2 }}>
-                  Securely logout from your account
+                  {language === "hi" ? "अपने खाते से सुरक्षित रूप से लॉगआउट करें" : "Securely logout from your account"}
                 </p>
               </div>
             </div>
@@ -647,7 +653,7 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
         {paymentHistory.length > 0 && (
           <div style={{ marginTop: 6 }}>
             <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#0f172a" }}>
-              Recent Transactions
+              {language === "hi" ? "हाल के लेन-देन" : "Recent Transactions"}
             </h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {paymentHistory.map((payment) => (
@@ -676,7 +682,7 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
                       ₹{payment.amount}
                     </p>
                     <span style={{ fontSize: 10, color: "#16a34a", background: "#f0fdf4", padding: "2px 6px", borderRadius: 6, fontWeight: 700 }}>
-                      {payment.status}
+                      {language === "hi" ? (payment.status === "Success" ? "सफल" : payment.status) : payment.status}
                     </span>
                   </div>
                 </div>
