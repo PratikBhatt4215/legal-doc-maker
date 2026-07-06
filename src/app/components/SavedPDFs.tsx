@@ -18,6 +18,7 @@ function formatDate(iso: string): string {
 
 export function SavedPDFs({ onBack }: SavedPDFsProps) {
   const [exports, setExports] = useState<PDFExportRecord[]>([]);
+  const isHi = storage.loadLanguage() === "hi";
 
   useEffect(() => {
     setExports(getAllPDFExports());
@@ -27,11 +28,13 @@ export function SavedPDFs({ onBack }: SavedPDFsProps) {
     try {
       await Share.share({
         title: record.templateName,
-        text: `Check out my exported legal document: ${record.templateName}`,
-        dialogTitle: "Share PDF Document",
+        text: isHi 
+          ? `मेरा निर्यातित कानूनी दस्तावेज़ देखें: ${record.templateName}`
+          : `Check out my exported legal document: ${record.templateName}`,
+        dialogTitle: isHi ? "PDF दस्तावेज़ साझा करें" : "Share PDF Document",
       });
     } catch (e) {
-      toast.error("Sharing not supported or cancelled.");
+      toast.error(isHi ? "साझा करना समर्थित नहीं है या रद्द कर दिया गया है।" : "Sharing not supported or cancelled.");
     }
   };
 
@@ -51,21 +54,31 @@ export function SavedPDFs({ onBack }: SavedPDFsProps) {
           <ArrowLeft size={20} />
         </button>
         <div>
-          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Saved PDFs</h1>
-          <p style={{ margin: 0, fontSize: 12, opacity: 0.75 }}>{exports.length} exported document{exports.length !== 1 ? "s" : ""}</p>
+          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
+            {isHi ? "सहेजे गए PDF" : "Saved PDFs"}
+          </h1>
+          <p style={{ margin: 0, fontSize: 12, opacity: 0.75 }}>
+            {isHi 
+              ? `${exports.length} निर्यातित दस्तावेज़` 
+              : `${exports.length} exported document${exports.length !== 1 ? "s" : ""}`}
+          </p>
         </div>
       </div>
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
         {exports.length === 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justify: "center", height: "60vh", gap: 16, color: "#94a3b8" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60vh", gap: 16, color: "#94a3b8" }}>
             <div style={{ width: 80, height: 80, borderRadius: 20, background: "#e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <FileText size={36} color="#94a3b8" />
             </div>
-            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#64748b" }}>No Saved PDFs</h3>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#64748b" }}>
+              {isHi ? "कोई सहेजा हुआ PDF नहीं" : "No Saved PDFs"}
+            </h3>
             <p style={{ margin: 0, fontSize: 14, textAlign: "center", color: "#94a3b8", maxWidth: 240 }}>
-              Export a template as a PDF from the Editor, and your files will be listed here.
+              {isHi 
+                ? "संपादक से एक टेम्पलेट को PDF के रूप में निर्यात करें, और आपकी फाइलें यहां दिखाई देंगी।"
+                : "Export a template as a PDF from the Editor, and your files will be listed here."}
             </p>
           </div>
         ) : (
@@ -97,7 +110,7 @@ export function SavedPDFs({ onBack }: SavedPDFsProps) {
                     <span style={{ fontSize: 11, color: "#94a3b8" }}>{formatDate(item.exportedAt)}</span>
                   </div>
                   <div style={{ fontSize: 10, color: "#2563eb", fontWeight: 700, marginTop: 4 }}>
-                    ID: {item.paymentId} (Paid: {item.amountPaid})
+                    {isHi ? "आईडी" : "ID"}: {item.paymentId} ({isHi ? "भुगतान किया" : "Paid"}: {item.amountPaid})
                   </div>
                 </div>
 

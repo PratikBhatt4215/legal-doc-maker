@@ -100,9 +100,12 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
     } catch (error: any) {
       console.error('Firebase Auth error:', error.code, error.message);
       const friendlyMsg = getAuthErrorMessage(error.code, language);
-      // Show code alongside message so we can diagnose unknown errors
-      const debugCode = error.code ? ` [${error.code}]` : '';
-      setError(friendlyMsg + debugCode);
+      // Always show error code + raw message for full diagnosis
+      const debugInfo = [
+        error.code ? `[${error.code}]` : '[no-code]',
+        error.message ? error.message : ''
+      ].filter(Boolean).join(' ');
+      setError(`${friendlyMsg} — ${debugInfo}`);
     } finally {
       setLoading(false);
     }

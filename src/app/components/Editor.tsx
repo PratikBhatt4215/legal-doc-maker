@@ -54,10 +54,14 @@ function wireEditableField(span: HTMLElement) {
   });
 
   span.addEventListener("focus", () => {
+    // Only force caret position to the end for empty fields (no user text entered yet)
+    if (!span.classList.contains("is-empty")) return;
+
     const sel = window.getSelection();
     if (sel) {
       // Small defer so Android keyboard has time to register the focus
       requestAnimationFrame(() => {
+        if (!span.classList.contains("is-empty")) return;
         const range = document.createRange();
         let textNode = span.firstChild;
         if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
@@ -78,13 +82,13 @@ function wireEditableField(span: HTMLElement) {
     const currentText = (span.textContent || "").trim();
     if (isTdField) {
       if (currentText === "") {
-        span.textContent = "";
+        span.textContent = "\u200B";
         span.classList.add("is-empty");
         span.classList.remove("has-value");
       }
     } else {
       if (currentText === "") {
-        span.textContent = ""; // Truly empty — CSS ::before handles placeholder look
+        span.textContent = "\u200B"; // Truly empty look — CSS handles layout size
         span.classList.add("is-empty");
         span.classList.remove("has-value");
       }
@@ -93,12 +97,16 @@ function wireEditableField(span: HTMLElement) {
 
   span.addEventListener("input", () => {
     const isTdField = span.classList.contains("td-field");
-    const currentText = (span.textContent || "").trim();
-    const hasText = currentText.length > 0;
+    // Strip any zero-width spaces injected by Android/browser so isEmpty check is accurate
+    const raw = span.textContent || "";
+    const cleaned = raw.replace(/\u200B/g, "").replace(/\uFEFF/g, "");
+    const hasText = cleaned.trim().length > 0;
+
     span.classList.toggle("is-empty", !hasText);
     span.classList.toggle("has-value", hasText);
+
     if (isTdField && !hasText) {
-      span.textContent = "";
+      span.textContent = "\u200B";
     }
   });
 
@@ -182,6 +190,35 @@ function mergeAdjacentDotTextNodes(container: HTMLElement): void {
   }
 }
 
+function getTextBetween(nodeA: Node, nodeB: Node, ancestor: Node): string {
+  let text = "";
+  let started = false;
+  let finished = false;
+
+  const traverse = (current: Node): void => {
+    if (finished) return;
+    if (current === nodeA) {
+      started = true;
+      return;
+    }
+    if (current === nodeB) {
+      finished = true;
+      return;
+    }
+
+    if (started && current.nodeType === Node.TEXT_NODE) {
+      text += current.textContent || "";
+    }
+
+    for (let i = 0; i < current.childNodes.length; i++) {
+      traverse(current.childNodes[i]);
+    }
+  };
+
+  traverse(ancestor);
+  return text;
+}
+
 function mergeAdjacentFields(container: HTMLElement): void {
   let changed = true;
   while (changed) {
@@ -196,10 +233,8 @@ function mergeAdjacentFields(container: HTMLElement): void {
       const p2 = next.closest("p, td, li, div");
       if (p1 && p1 === p2) {
         try {
-          const range = document.createRange();
-          range.setStartAfter(current);
-          range.setEndBefore(next);
-          const textBetween = range.toString().trim().replace(/\u00A0/g, "").replace(/\s+/g, "");
+          const textBetweenRaw = getTextBetween(current, next, p1);
+          const textBetween = textBetweenRaw.trim().replace(/\u00A0/g, "").replace(/\s+/g, "");
 
           if (textBetween === "") {
             // Merging next into current!
@@ -219,8 +254,8 @@ function mergeAdjacentFields(container: HTMLElement): void {
             changed = true;
             break;
           }
-        } catch (rangeErr) {
-          console.error("Range merge error:", rangeErr);
+        } catch (err) {
+          console.error("DOM traversal merge error:", err);
         }
       }
     }
@@ -273,7 +308,8 @@ function injectAndWire(container: HTMLElement): void {
         span.className = "legal-editable-field is-empty";
         span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         span.dataset.placeholder = text;
-        span.textContent = ""; // Truly empty — CSS ::before handles placeholder underline
+        span.textContent = "\u200B"; // Zero-width space so browser resolves caret inside the span on click
+        
         
         // Strip the underline/border styles from this span and ALL wrapper ancestors
         span.style.textDecoration = "none";
@@ -336,7 +372,7 @@ function injectAndWire(container: HTMLElement): void {
         span.className = isInTable ? "legal-editable-field is-empty td-field" : "legal-editable-field is-empty";
         span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         span.dataset.placeholder = isInTable ? "" : part;
-        span.textContent = ""; // Truly empty — CSS ::before handles placeholder underline
+        span.textContent = "\u200B"; // Zero-width space so browser resolves caret inside the span on click
 
         // Strip text-decoration and borders from all wrapper ancestors up the tree
         let ancestor = parent;
@@ -407,7 +443,7 @@ function injectAndWire(container: HTMLElement): void {
       span.className = "legal-editable-field is-empty td-field";
       span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
       span.dataset.placeholder = "";
-      span.textContent = "";
+      span.textContent = "\u200B";
       td.appendChild(span);
     }
   });
@@ -1078,6 +1114,7 @@ function useTouchPanZoom(
 }
 
 export function Editor({ formId, initialContent, draftId, customFile, customFileName, onBack, onExportPDF }: EditorProps) {
+  const isHi = storage.loadLanguage() === "hi";
   const [isLoading, setIsLoading] = useState(true);
   const [pageCount, setPageCount] = useState(0);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
@@ -1617,9 +1654,9 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
         // Setup articles
         docxRef.current!.querySelectorAll("article").forEach(article => {
           const el = article as HTMLElement;
-          el.contentEditable = "true";
+          el.contentEditable = "false";
           el.spellcheck = false;
-          el.style.cursor = "text";
+          el.style.cursor = "default";
           el.style.outline = "none";
           el.style.caretColor = "#111";
         });
@@ -1642,23 +1679,14 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
 
       // Defer DOM read slightly — Android WebView may not have flushed textContent yet
       setTimeout(() => {
-        // Update empty/filled styles for ALL fields in this article
+        // Update empty/filled styles for ALL fields in this article using cleaned check
         article.querySelectorAll(".legal-editable-field").forEach(field => {
           const f = field as HTMLElement;
-          const textContent = (f.textContent || "").trim();
-          const hasText = textContent.length > 0;
+          const raw = f.textContent || "";
+          const cleaned = raw.replace(/\u200B/g, "").replace(/\uFEFF/g, "");
+          const hasText = cleaned.trim().length > 0;
           f.classList.toggle("is-empty", !hasText);
           f.classList.toggle("has-value", hasText);
-        });
-
-        // Merge any adjacent empty fields that appeared next to a now-filled field
-        // This handles cases where a second leftover empty field sits right after typed content
-        mergeAdjacentFields(article);
-
-        // Wire any new fields that may have been exposed after merging
-        article.querySelectorAll(".legal-editable-field:not([data-wired])").forEach(field => {
-          (field as HTMLElement).dataset.wired = "1";
-          wireEditableField(field as HTMLElement);
         });
 
         // Save state to undo stack with a debounce to group typing operations
@@ -1690,92 +1718,115 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
         savedRangeRef.current = sel.getRangeAt(0).cloneRange();
       }
     };
+    // ── TAP vs SWIPE discriminator ────────────────────────────────────────────
+    // We record the touchstart position, then on touchend we check if the
+    // finger moved significantly. If movement > 8px it was a SCROLL/SWIPE and
+    // we do nothing. If movement <= 8px it was a TAP and we handle focus.
+    let tapStartX = 0;
+    let tapStartY = 0;
+    let tapStartTime = 0;
 
-    const handleTouchOrMouseDown = (e: MouseEvent | TouchEvent) => {
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return; // Only single finger taps
+      tapStartX = e.touches[0].clientX;
+      tapStartY = e.touches[0].clientY;
+      tapStartTime = Date.now();
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.changedTouches.length !== 1) return;
+
+      const endX = e.changedTouches[0].clientX;
+      const endY = e.changedTouches[0].clientY;
+      const dx = Math.abs(endX - tapStartX);
+      const dy = Math.abs(endY - tapStartY);
+      const elapsed = Date.now() - tapStartTime;
+
+      // If finger moved more than 8px in any direction, or held for more than
+      // 400ms (long-press), it was a scroll/swipe/long-press — do NOT focus.
+      if (dx > 8 || dy > 8 || elapsed > 400) return;
+
       const target = e.target as HTMLElement;
       if (!target) return;
 
-      // 1. If clicked/tapped directly on or near any editable field (.legal-editable-field)
-      const field = target.closest(".legal-editable-field") as HTMLElement;
-      if (field) {
-        field.focus();
+      // If they tapped directly ON a contentEditable field, let browser handle it natively
+      if (target.isContentEditable || target.closest("[contenteditable='true']")) return;
 
-        const sel = window.getSelection();
-        if (sel) {
-          // Defer selection adjustment slightly so browser finishes native touch processing
-          setTimeout(() => {
-            const range = document.createRange();
-            let textNode = field.firstChild;
-            if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
-              textNode = document.createTextNode("");
-              field.innerHTML = "";
-              field.appendChild(textNode);
-            }
-            
-            // Only force to the end if the field is empty, otherwise let the native caret index stand
-            if (field.classList.contains("is-empty")) {
-              range.setStart(textNode, textNode.textContent?.length || 0);
-              range.collapse(true);
-              sel.removeAllRanges();
-              sel.addRange(range);
-            }
-          }, 50);
+      // Tapped on static text or empty margin — redirect to nearest field
+      const section = target.closest("section.docx") as HTMLElement;
+      if (!section) return;
+
+      // Use TAP coordinates to find closest editable field
+      const clientX = endX;
+      const clientY = endY;
+
+      // STRICT 40px proximity threshold — only snap to fields that are very close
+      const MAX_SNAP_DISTANCE = 40;
+      const allFields = Array.from(container.querySelectorAll(".legal-editable-field")) as HTMLElement[];
+      let closestField: HTMLElement | null = null;
+      let minDist = MAX_SNAP_DISTANCE;
+
+      for (const f of allFields) {
+        const rect = f.getBoundingClientRect();
+        const dx2 = Math.max(0, rect.left - clientX, clientX - rect.right);
+        const dy2 = Math.max(0, rect.top - clientY, clientY - rect.bottom);
+        const d = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+        if (d < minDist) {
+          minDist = d;
+          closestField = f;
         }
-        return;
       }
 
-      // 2. Clicked/tapped anywhere else in the page (inside or outside the article text)
-      const section = target.closest("section.docx") as HTMLElement;
-      if (section) {
-        const article = section.querySelector("article");
-        if (article) {
-          // If they click on the margins, we call preventDefault to stop default focus loss
-          const clickedOutsideArticle = !article.contains(target);
-          if (clickedOutsideArticle) {
-            e.preventDefault();
-          }
-
-          article.focus();
-
-          // Get client coordinates of the touch or click
-          let clientX = 0;
-          let clientY = 0;
-          if ('touches' in e && e.touches.length > 0) {
-            clientX = e.touches[0].clientX;
-            clientY = e.touches[0].clientY;
-          } else if ('clientX' in e) {
-            clientX = e.clientX;
-            clientY = e.clientY;
-          }
-
+      if (closestField) {
+        e.preventDefault(); // Prevent default only for confirmed taps near a field
+        closestField.focus();
+        requestAnimationFrame(() => {
           const sel = window.getSelection();
-          if (sel && clientX > 0 && clientY > 0) {
-            let range: Range | null = null;
-            if ((document as any).caretRangeFromPoint) {
-              range = (document as any).caretRangeFromPoint(clientX, clientY);
-            } else if ((document as any).caretPositionFromPoint) {
-              const position = (document as any).caretPositionFromPoint(clientX, clientY);
-              if (position) {
-                range = document.createRange();
-                range.setStart(position.offsetNode, position.offset);
-                range.collapse(true);
-              }
-            }
-
-            // Verify the resolved range is inside the article
-            if (range && article.contains(range.startContainer)) {
-              sel.removeAllRanges();
-              sel.addRange(range);
-            } else if (clickedOutsideArticle) {
-              // Fallback to the end of the article if clicked outside
-              const fallbackRange = document.createRange();
-              fallbackRange.selectNodeContents(article);
-              fallbackRange.collapse(false);
-              sel.removeAllRanges();
-              sel.addRange(fallbackRange);
-            }
+          if (!sel) return;
+          let textNode = closestField!.firstChild;
+          if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+            textNode = document.createTextNode("\u200B");
+            closestField!.innerHTML = "";
+            closestField!.appendChild(textNode);
           }
+          const range = document.createRange();
+          range.setStart(textNode, textNode.textContent?.length || 0);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        });
+      }
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target) return;
+      // Only redirect if clicking on non-editable static text
+      if (target.isContentEditable || target.closest("[contenteditable='true']")) return;
+
+      const section = target.closest("section.docx") as HTMLElement;
+      if (!section) return;
+
+      const clientX = e.clientX;
+      const clientY = e.clientY;
+
+      const allFields = Array.from(container.querySelectorAll(".legal-editable-field")) as HTMLElement[];
+      let closestField: HTMLElement | null = null;
+      let minDist = 40;
+
+      for (const f of allFields) {
+        const rect = f.getBoundingClientRect();
+        const dx2 = Math.max(0, rect.left - clientX, clientX - rect.right);
+        const dy2 = Math.max(0, rect.top - clientY, clientY - rect.bottom);
+        const d = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+        if (d < minDist) {
+          minDist = d;
+          closestField = f;
         }
+      }
+
+      if (closestField) {
+        closestField.focus();
       }
     };
 
@@ -2016,9 +2067,9 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       // Setup articles
       container.querySelectorAll("article").forEach(article => {
         const el = article as HTMLElement;
-        el.contentEditable = "true";
+        el.contentEditable = "false";
         el.spellcheck = false;
-        el.style.cursor = "text";
+        el.style.cursor = "default";
         el.style.outline = "none";
         el.style.caretColor = "#111";
       });
@@ -2445,7 +2496,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
             }}
           >
             <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginRight: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-              Select Line Spacing (1.5 - 2.0):
+              {isHi ? "लाइन स्पेसिंग चुनें (1.5 - 2.0):" : "Select Line Spacing (1.5 - 2.0):"}
             </span>
             {[1.5, 1.6, 1.7, 1.8, 1.9, 2.0].map((val) => (
               <button
@@ -2508,7 +2559,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
             <div style={{ width: 24, height: 24, borderRadius: "50%", background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Undo2 size={13} strokeWidth={2.5} />
             </div>
-            <span style={{ fontSize: 9, fontWeight: 700 }}>Undo</span>
+            <span style={{ fontSize: 9, fontWeight: 700 }}>{isHi ? "पूर्ववत" : "Undo"}</span>
           </button>
 
           {/* Tab Indent Button */}
@@ -2535,7 +2586,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
             <div style={{ width: 24, height: 24, borderRadius: "50%", background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace", fontSize: 13, fontWeight: 700 }}>
               ⇥
             </div>
-            <span style={{ fontSize: 9, fontWeight: 700 }}>Tab</span>
+            <span style={{ fontSize: 9, fontWeight: 700 }}>{isHi ? "टैब" : "Tab"}</span>
           </button>
 
           <div style={{ width: 1, height: 28, background: "#cbd5e1", flexShrink: 0, margin: "0 4px" }} />
@@ -2559,7 +2610,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
                 <div style={{ width: 24, height: 24, borderRadius: "50%", background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <Table size={14} strokeWidth={2.5} color="#1e3a8a" />
                 </div>
-                <span style={{ fontSize: 9, fontWeight: 700, color: "#1e3a8a" }}>Table Tools</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: "#1e3a8a" }}>{isHi ? "तालिका टूल्स" : "Table Tools"}</span>
               </button>
               <div style={{ width: 1, height: 28, background: "#cbd5e1", flexShrink: 0 }} />
             </>
@@ -2597,7 +2648,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
               }}>
                 <Bold size={13} strokeWidth={2.5} />
               </div>
-              <span style={{ fontSize: 9, fontWeight: 700 }}>Bold</span>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>{isHi ? "बोल्ड" : "Bold"}</span>
             </button>
 
             {/* Underline Button */}
@@ -2632,7 +2683,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
               }}>
                 <Underline size={13} strokeWidth={2.5} />
               </div>
-              <span style={{ fontSize: 9, fontWeight: 700 }}>Underline</span>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>{isHi ? "रेखांकित" : "Underline"}</span>
             </button>
 
             <div style={{ width: 1, height: 24, background: "#cbd5e1", flexShrink: 0, margin: "0 2px" }} />
@@ -2654,7 +2705,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
               <div style={{ width: 24, height: 24, borderRadius: "50%", background: selectionFormat.align === "center" ? "#fed7aa" : "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <AlignCenter size={13} />
               </div>
-              <span style={{ fontSize: 9, fontWeight: 700 }}>Center</span>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>{isHi ? "मध्य" : "Center"}</span>
             </button>
 
             {/* Alignment: Justify */}
@@ -2674,7 +2725,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
               <div style={{ width: 24, height: 24, borderRadius: "50%", background: selectionFormat.align === "justify" ? "#fed7aa" : "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <AlignJustify size={13} />
               </div>
-              <span style={{ fontSize: 9, fontWeight: 700 }}>Justify</span>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>{isHi ? "समान" : "Justify"}</span>
             </button>
 
             <div style={{ width: 1, height: 24, background: "#cbd5e1", flexShrink: 0, margin: "0 2px" }} />
@@ -2772,7 +2823,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
                   }}
                   style={{ width: 20, height: 20, border: "1px solid #e2e8f0", borderRadius: 4, background: "#f8fafc", color: "#374151", fontSize: 13, fontWeight: 700, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
               </div>
-              <span style={{ fontSize: 9, fontWeight: 700, color: "#475569" }}>Font Size</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: "#475569" }}>{isHi ? "फ़ॉन्ट साइज़" : "Font Size"}</span>
             </div>
 
             {/* Table Insert Button */}
@@ -2803,7 +2854,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
               }}>
                 <Table size={13} />
               </div>
-              <span style={{ fontSize: 9, fontWeight: 700 }}>Table</span>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>{isHi ? "तालिका" : "Table"}</span>
             </button>
 
             {/* Spacing Selector Toggle */}
@@ -2834,7 +2885,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
               }}>
                 <BetweenHorizontalStart size={13} style={{ transform: "rotate(90deg)" }} />
               </div>
-              <span style={{ fontSize: 9, fontWeight: 700 }}>Spacing</span>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>{isHi ? "अंतराल" : "Spacing"}</span>
             </button>
 
             {/* Ruler Toggle Button */}
@@ -2865,7 +2916,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
               }}>
                 <Ruler size={13} />
               </div>
-              <span style={{ fontSize: 9, fontWeight: 700 }}>Ruler</span>
+              <span style={{ fontSize: 9, fontWeight: 700 }}>{isHi ? "रूलर" : "Ruler"}</span>
             </button>
 
           </div>
@@ -2911,7 +2962,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
             onMouseDown={(e) => e.currentTarget.style.transform = "scale(0.98)"}
             onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
           >
-            <RotateCcw size={14} /> Reset
+            <RotateCcw size={14} /> {isHi ? "रीसेट" : "Reset"}
           </button>
 
           {/* Save as Draft Button */}
@@ -2943,7 +2994,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
             onMouseDown={(e) => e.currentTarget.style.transform = "scale(0.98)"}
             onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
           >
-            <Save size={14} /> Save Draft
+            <Save size={14} /> {isHi ? "ड्राफ्ट सहेजें" : "Save Draft"}
           </button>
 
           <button
@@ -2968,7 +3019,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
             onMouseDown={(e) => e.currentTarget.style.transform = "scale(0.98)"}
             onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
           >
-            <Eye size={14} /> Preview
+            <Eye size={14} /> {isHi ? "पूर्वावलोकन" : "Preview"}
           </button>
 
           <button
@@ -2996,7 +3047,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
             onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
           >
             {exportingPDF ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-            {exportingPDF ? "Generating…" : "Export PDF"}
+            {exportingPDF ? (isHi ? "तैयार हो रहा है..." : "Generating…") : (isHi ? "PDF निर्यात करें" : "Export PDF")}
           </button>
         </div>
       </div>
@@ -3240,7 +3291,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>Insert Table</h3>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{isHi ? "तालिका जोड़ें" : "Insert Table"}</h3>
                 <button
                   onClick={() => setShowTableModal(false)}
                   style={{
@@ -3258,7 +3309,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
               <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
                 {/* Columns Input */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Number of Columns</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>{isHi ? "कॉलम की संख्या" : "Number of Columns"}</label>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <button
                       onClick={() => setTableCols(prev => Math.max(1, prev - 1))}
@@ -3295,7 +3346,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
 
                 {/* Rows Input */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Number of Rows</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>{isHi ? "पंक्तियों की संख्या" : "Number of Rows"}</label>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <button
                       onClick={() => setTableRows(prev => Math.max(1, prev - 1))}
@@ -3339,7 +3390,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
                     background: "#ffffff", color: "#475569", fontSize: 13, fontWeight: 700, cursor: "pointer",
                   }}
                 >
-                  Cancel
+                  {isHi ? "रद्द करें" : "Cancel"}
                 </button>
                 <button
                   onClick={insertTableAtCursor}
@@ -3349,7 +3400,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
                     boxShadow: "0 2px 5px rgba(15,110,105,0.2)"
                   }}
                 >
-                  Insert Table
+                  {isHi ? "तालिका जोड़ें" : "Insert Table"}
                 </button>
               </div>
             </motion.div>

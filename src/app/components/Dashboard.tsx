@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, Search, Mic, X, Clock, FileText, Home, Save, FolderOpen, History } from "lucide-react";
+import { User, Search, Mic, X, Clock, FileText, Home, Save, FolderOpen, History, Globe } from "lucide-react";
 import { courts, courtForms } from "../../lib/legalData";
 import { MESSAGES, MESSAGES_HI } from "../../lib/messages";
 import { SpeechRecognition } from "@capacitor-community/speech-recognition";
@@ -53,6 +53,12 @@ export function Dashboard({
     return (storage.loadLanguage() as "en" | "hi") || "hi";
   });
   const M = language === "hi" ? MESSAGES_HI.dashboard : MESSAGES.dashboard;
+
+  const handleLanguageToggle = () => {
+    const newLang = language === "hi" ? "en" : "hi";
+    storage.saveLanguage(newLang);
+    window.location.reload();
+  };
   const [searchQuery, setSearchQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [recentSearches] = useState(MESSAGES.dashboard.recentSearches);
@@ -188,6 +194,33 @@ export function Dashboard({
           }}
         >
           <User style={{ width: 22, height: 22, color: "white" }} />
+        </button>
+
+        {/* Language toggle – top-left corner */}
+        <button
+          onClick={handleLanguageToggle}
+          style={{
+            position: "absolute",
+            top: 14,
+            left: 14,
+            zIndex: 30,
+            height: 32,
+            borderRadius: 20,
+            background: "rgba(255,255,255,0.18)",
+            border: "1.5px solid rgba(255,255,255,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            padding: "0 12px",
+            gap: 6,
+            backdropFilter: "blur(6px)"
+          }}
+        >
+          <Globe style={{ width: 14, height: 14, color: "white" }} />
+          <span style={{ fontSize: 12, fontWeight: 800, color: "white", letterSpacing: 0.3 }}>
+            {language === "hi" ? "EN" : "हिं"}
+          </span>
         </button>
 
         {/* Text content – left side, starts below status bar */}

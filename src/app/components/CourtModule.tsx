@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, ChevronRight, Search, X, FileText } from "lucide-react";
+import { ArrowLeft, ChevronRight, Search, X, FileText, Globe } from "lucide-react";
 import { useState, useMemo } from "react";
 import { courts } from "../../lib/legalData";
 import {
@@ -346,14 +346,14 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
             {totalCount} templates
           </span>
           <span className="text-xs text-gray-400">•</span>
-          {/* Active language badge */}
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-            language === "hi"
-              ? "bg-[#1e3a5f]/10 text-[#1e3a5f]"
-              : "bg-emerald-100 text-emerald-700"
-          }`}>
-            {language === "hi" ? "हिंदी" : "English"}
-          </span>
+          {/* Active language badge / toggle button */}
+          <button
+            onClick={() => handleLangSwitch(language === "hi" ? "en" : "hi")}
+            className="flex items-center gap-1.5 text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition-all border border-emerald-200 shadow-sm cursor-pointer"
+          >
+            <Globe className="w-3 h-3 text-emerald-600" />
+            <span>{language === "hi" ? "हिंदी" : "English"}</span>
+          </button>
         </div>
       </div>
 

@@ -18,7 +18,7 @@ public class MainActivity extends BridgeActivity {
         WebView.enableSlowWholeDocumentDraw();
         registerPlugin(NativePdfExporter.class);
         super.onCreate(savedInstanceState);
-        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+        // getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
 
         // Disable rubber-band/overscroll on the Capacitor WebView
         // and register custom handler for UPI payment redirects

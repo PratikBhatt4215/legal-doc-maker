@@ -19,6 +19,7 @@ function formatDate(iso: string): string {
 export function UploadedFiles({ onBack, onOpenFileRecord }: UploadedFilesProps) {
   const [files, setFiles] = useState<UploadedFileRecord[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const isHi = storage.loadLanguage() === "hi";
 
   const reload = () => setFiles(getAllUploadedFiles());
 
@@ -31,7 +32,7 @@ export function UploadedFiles({ onBack, onOpenFileRecord }: UploadedFilesProps) 
     if (!file) return;
 
     if (!file.name.endsWith(".docx")) {
-      toast.error("Please select a valid Word document (.docx)");
+      toast.error(isHi ? "कृपया एक मान्य वर्ड दस्तावेज़ (.docx) चुनें" : "Please select a valid Word document (.docx)");
       return;
     }
 
@@ -50,15 +51,15 @@ export function UploadedFiles({ onBack, onOpenFileRecord }: UploadedFilesProps) 
         const base64 = btoa(binary);
 
         saveUploadedFile(file.name, base64);
-        toast.success("Document uploaded successfully!");
+        toast.success(isHi ? "दस्तावेज़ सफलतापूर्वक अपलोड किया गया!" : "Document uploaded successfully!");
         reload();
       } catch (err) {
-        toast.error("Failed to process document file.");
+        toast.error(isHi ? "दस्तावेज़ फ़ाइल को प्रोसेस करने में विफल।" : "Failed to process document file.");
         console.error(err);
       }
     };
     reader.onerror = () => {
-      toast.error("Error reading document file.");
+      toast.error(isHi ? "दस्तावेज़ फ़ाइल पढ़ने में त्रुटि।" : "Error reading document file.");
     };
     reader.readAsArrayBuffer(file);
   };
@@ -66,7 +67,7 @@ export function UploadedFiles({ onBack, onOpenFileRecord }: UploadedFilesProps) 
   const handleDelete = (id: string) => {
     deleteUploadedFile(id);
     setConfirmDelete(null);
-    toast.success("Document deleted permanently.");
+    toast.success(isHi ? "दस्तावेज़ स्थायी रूप से हटा दिया गया।" : "Document deleted permanently.");
     reload();
   };
 
@@ -91,9 +92,13 @@ export function UploadedFiles({ onBack, onOpenFileRecord }: UploadedFilesProps) 
           <ArrowLeft size={20} />
         </button>
         <div>
-          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>My Custom Documents</h1>
+          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
+            {isHi ? "मेरे कस्टम दस्तावेज़" : "My Custom Documents"}
+          </h1>
           <p style={{ margin: 0, fontSize: 12, opacity: 0.75 }}>
-            {files.length} document{files.length !== 1 ? "s" : ""} uploaded
+            {isHi 
+              ? `${files.length} दस्तावेज़ अपलोड किए गए` 
+              : `${files.length} document${files.length !== 1 ? "s" : ""} uploaded`}
           </p>
         </div>
       </div>
@@ -118,8 +123,12 @@ export function UploadedFiles({ onBack, onOpenFileRecord }: UploadedFilesProps) 
               <FileUp size={22} color="white" />
             </div>
             <div style={{ flex: 1 }}>
-              <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700 }}>Upload New .docx</h3>
-              <p style={{ margin: 0, fontSize: 11, opacity: 0.85 }}>Select a document from your device to edit</p>
+              <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700 }}>
+                {isHi ? "नया .docx अपलोड करें" : "Upload New .docx"}
+              </h3>
+              <p style={{ margin: 0, fontSize: 11, opacity: 0.85 }}>
+                {isHi ? "संपादित करने के लिए अपने डिवाइस से एक दस्तावेज़ चुनें" : "Select a document from your device to edit"}
+              </p>
             </div>
             
             <label style={{
@@ -128,7 +137,7 @@ export function UploadedFiles({ onBack, onOpenFileRecord }: UploadedFilesProps) 
               fontWeight: 700, cursor: "pointer", display: "inline-block",
               boxShadow: "0 4px 10px rgba(0,0,0,0.1)", textAlign: "center"
             }}>
-              Upload File
+              {isHi ? "अपलोड करें" : "Upload File"}
               <input
                 type="file"
                 accept=".docx"
@@ -151,15 +160,19 @@ export function UploadedFiles({ onBack, onOpenFileRecord }: UploadedFilesProps) 
             }}>
               <FolderOpen size={36} color="#94a3b8" />
             </div>
-            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#64748b" }}>No Custom Uploads</h3>
+            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#64748b" }}>
+              {isHi ? "कोई कस्टम अपलोड नहीं" : "No Custom Uploads"}
+            </h3>
             <p style={{ margin: 0, fontSize: 13, textAlign: "center", color: "#94a3b8", maxWidth: 260 }}>
-              Upload any standard legal Word (.docx) file from your phone storage to view, edit, and fill details inside the editor.
+              {isHi 
+                ? "संपादक के अंदर देखने, संपादित करने और विवरण भरने के लिए अपने फोन स्टोरेज से कोई भी मानक कानूनी वर्ड (.docx) फ़ाइल अपलोड करें।"
+                : "Upload any standard legal Word (.docx) file from your phone storage to view, edit, and fill details inside the editor."}
             </p>
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <h4 style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 700, color: "#64748b", uppercase: "true", letterSpacing: "0.5px" }}>
-              RECENT UPLOADS
+            <h4 style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 700, color: "#64748b", letterSpacing: "0.5px" }}>
+              {isHi ? "हाल के अपलोड" : "RECENT UPLOADS"}
             </h4>
             
             {files.map((file) => (
@@ -211,7 +224,9 @@ export function UploadedFiles({ onBack, onOpenFileRecord }: UploadedFilesProps) 
                 }}>
                   {confirmDelete === file.id ? (
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <span style={{ fontSize: 12, color: "#64748b" }}>Delete permanently?</span>
+                      <span style={{ fontSize: 12, color: "#64748b" }}>
+                        {isHi ? "स्थायी रूप से हटाएं?" : "Delete permanently?"}
+                      </span>
                       <button
                         onClick={() => setConfirmDelete(null)}
                         style={{
@@ -219,7 +234,9 @@ export function UploadedFiles({ onBack, onOpenFileRecord }: UploadedFilesProps) 
                           border: "none", borderRadius: 6, padding: "4px 8px",
                           cursor: "pointer", fontWeight: 600
                         }}
-                      >Cancel</button>
+                      >
+                        {isHi ? "रद्द करें" : "Cancel"}
+                      </button>
                       <button
                         onClick={() => handleDelete(file.id)}
                         style={{
@@ -227,7 +244,9 @@ export function UploadedFiles({ onBack, onOpenFileRecord }: UploadedFilesProps) 
                           border: "none", borderRadius: 6, padding: "4px 8px",
                           fontWeight: 700, cursor: "pointer"
                         }}
-                      >Delete</button>
+                      >
+                        {isHi ? "हटाएं" : "Delete"}
+                      </button>
                     </div>
                   ) : (
                     <button
@@ -239,7 +258,7 @@ export function UploadedFiles({ onBack, onOpenFileRecord }: UploadedFilesProps) 
                         fontWeight: 600
                       }}
                     >
-                      <Trash2 size={12} /> Delete File
+                      <Trash2 size={12} /> {isHi ? "फ़ाइल हटाएं" : "Delete File"}
                     </button>
                   )}
                 </div>

@@ -18,6 +18,7 @@ function formatDate(iso: string): string {
 export function DraftsScreen({ onBack, onOpenDraft }: DraftsScreenProps) {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const isHi = storage.loadLanguage() === "hi";
 
   const reload = () => setDrafts(getAllDrafts());
 
@@ -45,8 +46,14 @@ export function DraftsScreen({ onBack, onOpenDraft }: DraftsScreenProps) {
           <ArrowLeft size={20} />
         </button>
         <div>
-          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>My Drafts</h1>
-          <p style={{ margin: 0, fontSize: 12, opacity: 0.75 }}>{drafts.length} saved draft{drafts.length !== 1 ? "s" : ""}</p>
+          <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
+            {isHi ? "मेरे ड्राफ्ट" : "My Drafts"}
+          </h1>
+          <p style={{ margin: 0, fontSize: 12, opacity: 0.75 }}>
+            {isHi 
+              ? `${drafts.length} सहेजा हुआ ड्राफ्ट` 
+              : `${drafts.length} saved draft${drafts.length !== 1 ? "s" : ""}`}
+          </p>
         </div>
       </div>
 
@@ -57,9 +64,13 @@ export function DraftsScreen({ onBack, onOpenDraft }: DraftsScreenProps) {
             <div style={{ width: 80, height: 80, borderRadius: 20, background: "#e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <FolderOpen size={36} color="#94a3b8" />
             </div>
-            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#64748b" }}>No Drafts Yet</h3>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#64748b" }}>
+              {isHi ? "अभी तक कोई ड्राफ्ट नहीं" : "No Drafts Yet"}
+            </h3>
             <p style={{ margin: 0, fontSize: 14, textAlign: "center", color: "#94a3b8", maxWidth: 240 }}>
-              Open a template, make your edits, and tap "Save as Draft" to save it here.
+              {isHi 
+                ? "एक टेम्पलेट खोलें, अपने संपादन करें, और इसे यहां सहेजने के लिए 'ड्राफ्ट के रूप में सहेजें' पर टैप करें।"
+                : "Open a template, make your edits, and tap \"Save as Draft\" to save it here."}
             </p>
           </div>
         ) : (
@@ -105,22 +116,28 @@ export function DraftsScreen({ onBack, onOpenDraft }: DraftsScreenProps) {
                 <div style={{ borderTop: "1px solid #f8fafc", padding: "8px 16px", display: "flex", justifyContent: "flex-end" }}>
                   {confirmDelete === draft.id ? (
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <span style={{ fontSize: 12, color: "#64748b" }}>Delete this draft?</span>
+                      <span style={{ fontSize: 12, color: "#64748b" }}>
+                        {isHi ? "इस ड्राफ्ट को हटाएं?" : "Delete this draft?"}
+                      </span>
                       <button
                         onClick={() => setConfirmDelete(null)}
                         style={{ fontSize: 12, color: "#64748b", background: "#f1f5f9", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
-                      >Cancel</button>
+                      >
+                        {isHi ? "रद्द करें" : "Cancel"}
+                      </button>
                       <button
                         onClick={() => handleDelete(draft.id)}
                         style={{ fontSize: 12, color: "white", background: "#ef4444", border: "none", borderRadius: 6, padding: "4px 10px", fontWeight: 700, cursor: "pointer" }}
-                      >Delete</button>
+                      >
+                        {isHi ? "हटाएं" : "Delete"}
+                      </button>
                     </div>
                   ) : (
                     <button
                       onClick={() => setConfirmDelete(draft.id)}
                       style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#ef4444", background: "transparent", border: "none", cursor: "pointer", padding: "4px 0" }}
                     >
-                      <Trash2 size={13} /> Delete
+                      <Trash2 size={13} /> {isHi ? "हटाएं" : "Delete"}
                     </button>
                   )}
                 </div>
