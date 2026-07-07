@@ -2038,6 +2038,14 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
     if (docxRef.current) storage.saveDraft(formId, docxRef.current.innerHTML);
   }, [formId]);
 
+
+  const handleTouchOrMouseDown = (e: Event) => {
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0) {
+    savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+  }
+};
+
   const handleResetLayout = useCallback(() => {
     const container = docxRef.current;
     if (!container) return;

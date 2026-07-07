@@ -2,3 +2,12 @@
 @import './tailwind.css';
 @import './theme.css';
 @import './legal-document.css';
+
+@media print {
+  .docx-wrapper > section.docx, section.docx {
+    page-break-after: always !important;
+    break-after: page !important;
+    max-height: 1123px !important; 
+    overflow: hidden !important;  
+  }
+}
