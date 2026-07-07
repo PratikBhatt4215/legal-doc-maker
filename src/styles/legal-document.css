@@ -19,6 +19,27 @@
   color: #94a3b8 !important; /* Soft grey color for native placeholder dots */
 }
 
+/* Block native caret placement in static text */
+.docx-wrapper > section.docx article {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  caret-color: transparent !important;
+}
+
+.docx-wrapper > section.docx article * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  caret-color: transparent !important;
+}
+
+/* Allow selection and typing inside editable fields */
+.docx-wrapper > section.docx article .legal-editable-field,
+.docx-wrapper > section.docx article .legal-editable-field * {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  caret-color: #111 !important;
+}
+
 .docx-wrapper {
   background-color: #e2e8f0 !important;
   padding: 32px 0 !important;
@@ -154,8 +175,7 @@
    ========================================================================== */
 
 .legal-editable-field {
-  display: inline-block !important; /* Default — overridden by is-empty/has-value */
-  min-width: 1px !important;
+  display: inline !important; /* Forces inline layout flow for perfect caret positioning */
   vertical-align: baseline !important;
   outline: none !important;
   cursor: text;
@@ -208,14 +228,11 @@ article[contenteditable="true"] {
 
 /* ── 1. Empty State: dotted underline, shows the blank fill-in area ── */
 .legal-editable-field.is-empty {
-  display: inline-block !important;
-  min-width: 60px !important;
+  display: inline !important;
   border-bottom: 1.5px dotted #94a3b8 !important;
   color: #111 !important;
   background: transparent !important;
   vertical-align: baseline !important;
-  padding: 2px 4px !important;
-  margin: 0 -1px !important;
   outline: none !important;
   font-size: inherit !important;
   font-family: inherit !important;
