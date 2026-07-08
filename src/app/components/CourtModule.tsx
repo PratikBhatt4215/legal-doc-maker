@@ -204,12 +204,15 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
 
   const title = language === "hi" ? (court?.titleHi || court?.title || "Court") : (court?.title || "Court");
   const [searchQuery, setSearchQuery] = useState("");
-  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  
+  // Navigation path stack: e.g. ["Civil Cases", "for plaintiff"]
+  const [navPath, setNavPath] = useState<string[]>([]);
 
-  // Switch language — always allowed now!
+  // Switch language
   const handleLangSwitch = (lang: Language) => {
     setLanguage(lang);
     storage.saveLanguage(lang);
+    setNavPath([]); // reset path on language switch
   };
 
   const handleTemplateClick = (template: TemplateFile) => {
@@ -275,10 +278,8 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
       currentNode.templates.push(t);
     }
     return trees;
-  }, [filteredTemplates]);
+  }, [filteredTemplates, language]);
 
-  const categoryKeys = Object.keys(categoryTrees);
-  
   // Count total templates in all trees
   const totalCount = useMemo(() => {
     const countTemplates = (node: FolderNode): number => {
@@ -291,6 +292,52 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
     return Object.values(categoryTrees).reduce((acc, node) => acc + countTemplates(node), 0);
   }, [categoryTrees]);
 
+  // Resolve the currently active folder node based on navPath
+  const activeNode = useMemo(() => {
+    if (navPath.length === 0) {
+      return {
+        name: title,
+        subfolders: categoryTrees,
+        templates: [],
+      };
+    }
+
+    let current: FolderNode | undefined = categoryTrees[navPath[0]];
+    for (let i = 1; i < navPath.length; i++) {
+      if (!current) break;
+      current = current.subfolders[navPath[i]];
+    }
+    return current;
+  }, [categoryTrees, navPath, title]);
+
+  const handleBack = () => {
+    if (navPath.length > 0) {
+      setNavPath(prev => prev.slice(0, -1)); // go up one folder level
+    } else {
+      onBack(); // go back to court selection
+    }
+  };
+
+  const countTemplatesRecursively = (node: FolderNode): number => {
+    let count = node.templates.length;
+    for (const sub of Object.values(node.subfolders)) {
+      count += countTemplatesRecursively(sub);
+    }
+    return count;
+  };
+
+  // Helper to jump to a specific breadcrumb index
+  const handleBreadcrumbClick = (index: number) => {
+    if (index === -1) {
+      setNavPath([]);
+    } else {
+      setNavPath(navPath.slice(0, index + 1));
+    }
+  };
+
+  const currentSubfolders = activeNode ? Object.entries(activeNode.subfolders) : [];
+  const currentTemplates = activeNode ? activeNode.templates : [];
+
   return (
     <div className="min-h-screen bg-[#f4f6f9]">
 
@@ -298,22 +345,27 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
       <div className="bg-white shadow-sm sticky top-0 z-30 border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
 
-          {/* Back */}
+          {/* Back Button */}
           <button
-            onClick={onBack}
+            onClick={handleBack}
             className="flex items-center gap-2 text-[#1e3a5f] hover:bg-gray-100 p-2 rounded-xl transition-all"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
 
-          {/* Search */}
+          {/* Search bar */}
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder={`Search templates...`}
+              placeholder={language === "hi" ? "दस्तावेज़ खोजें..." : "Search templates..."}
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              onChange={e => {
+                setSearchQuery(e.target.value);
+                if (e.target.value !== "") {
+                  setNavPath([]); // reset navigation path when searching to search globally
+                }
+              }}
               className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#9b1c31]/20 focus:border-[#9b1c31] transition-all text-sm"
             />
             {searchQuery && (
@@ -325,8 +377,6 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
               </button>
             )}
           </div>
-
-
         </div>
 
         {/* Court title + stats bar */}
@@ -343,10 +393,10 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
           <h1 className="text-base font-extrabold text-[#1e3a5f]">{title}</h1>
           <span className="text-xs text-gray-400">•</span>
           <span className="text-xs text-gray-500 font-medium">
-            {totalCount} templates
+            {totalCount} {language === "hi" ? "टेम्पलेट्स" : "templates"}
           </span>
           <span className="text-xs text-gray-400">•</span>
-          {/* Active language badge / toggle button */}
+          {/* Language toggle */}
           <button
             onClick={() => handleLangSwitch(language === "hi" ? "en" : "hi")}
             className="flex items-center gap-1.5 text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition-all border border-emerald-200 shadow-sm cursor-pointer"
@@ -355,137 +405,108 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
             <span>{language === "hi" ? "हिंदी" : "English"}</span>
           </button>
         </div>
+
+        {/* Breadcrumbs Navigation Bar */}
+        <div className="bg-gray-50/80 backdrop-blur border-t border-gray-100 px-4 py-2 flex items-center gap-1 overflow-x-auto text-xs whitespace-nowrap scrollbar-none">
+          <button
+            onClick={() => handleBreadcrumbClick(-1)}
+            className="text-gray-500 hover:text-[#9b1c31] font-medium"
+          >
+            {title}
+          </button>
+          {navPath.map((folder, idx) => (
+            <div key={idx} className="flex items-center gap-1">
+              <ChevronRight className="w-3 h-3 text-gray-400" />
+              <button
+                onClick={() => handleBreadcrumbClick(idx)}
+                className={`font-semibold ${
+                  idx === navPath.length - 1 ? "text-[#9b1c31]" : "text-gray-500 hover:text-[#9b1c31]"
+                }`}
+              >
+                {folder}
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* ── Content ── */}
-      <div className="max-w-7xl mx-auto px-4 py-5 space-y-3">
+      {/* ── Directory Content Explorer ── */}
+      <div className="max-w-7xl mx-auto px-4 py-4">
 
-        {/* No results */}
+        {/* Empty Search Result */}
         {filteredTemplates.length === 0 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-20"
-          >
+          <div className="text-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm">
             <div className="bg-gray-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
               <Search className="w-7 h-7 text-gray-400" />
             </div>
-            <h3 className="text-lg font-bold text-[#1e3a5f]">{language === "hi" ? MESSAGES_HI.dashboard.noMatchFound : MESSAGES.dashboard.noMatchFound}</h3>
+            <h3 className="text-lg font-bold text-[#1e3a5f]">
+              {language === "hi" ? MESSAGES_HI.dashboard.noMatchFound : MESSAGES.dashboard.noMatchFound}
+            </h3>
             <p className="text-gray-500 mt-1 text-sm">
-              {searchQuery ? (language === "hi" ? "कोई अन्य खोज प्रयास करें" : "Try a different search") : (language === "hi" ? "कोई टेम्पलेट उपलब्ध नहीं" : "No templates available")}
+              {language === "hi" ? "कोई मैचिंग फाइल नहीं मिली" : "No matching files found"}
             </p>
-          </motion.div>
+          </div>
         )}
 
-        {/* Category accordion for other folders */}
-        {categoryKeys.filter(k => k !== "General" && k !== "सामान्य फ़ाइलें").map((categoryName, catIdx) => {
-          const rootNode = categoryTrees[categoryName];
-          const isExpanded = expandedCategory === categoryName || searchQuery !== "";
-
-          const countTemplates = (node: FolderNode): number => {
-            let count = node.templates.length;
-            for (const sub of Object.values(node.subfolders)) {
-              count += countTemplates(sub);
-            }
-            return count;
-          };
-          const totalTemplates = countTemplates(rootNode);
-
-          return (
-            <motion.div
-              key={categoryName}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: catIdx * 0.03 }}
-              className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-3"
-            >
-              {/* Category header */}
-              <button
-                onClick={() =>
-                  setExpandedCategory(isExpanded && !searchQuery ? null : categoryName)
-                }
-                className="w-full flex items-center justify-between px-4 py-4 hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0 bg-[#9b1c31]/5">
-                    {(() => {
-                      const icon = getCategoryIcon(categoryName);
-                      return icon
-                        ? <img src={icon} alt={categoryName} className="w-11 h-11 object-cover rounded-xl" />
-                        : <span className="text-2xl">📂</span>;
-                    })()}
-                  </div>
-                  <div className="text-left">
-                    <h2 className="font-bold text-[#1e3a5f] text-sm leading-tight">
-                      {categoryName}
-                    </h2>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {totalTemplates} {language === "hi" ? "दस्तावेज़" : "document"}{totalTemplates !== 1 && language !== "hi" ? "s" : ""}
-                    </p>
-                  </div>
-                </div>
-                <ChevronRight
-                  className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${
-                    isExpanded ? "rotate-90" : ""
-                  }`}
-                />
-              </button>
-
-              {/* Recursive Folder/File View */}
-              <AnimatePresence>
-                {isExpanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.18 }}
-                    className="border-t border-gray-100"
-                  >
-                    <FolderView
-                      node={rootNode}
-                      onSelectTemplate={handleTemplateClick}
-                      language={language}
-                      searchActive={searchQuery !== ""}
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          );
-        })}
-
-        {/* Flat Template List for "General" category */}
-        {(categoryTrees["General"] || categoryTrees["सामान्य फ़ाइलें"]) && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-3"
-          >
-            <div className="flex flex-col w-full">
-              {(categoryTrees["General"] || categoryTrees["सामान्य फ़ाइलें"]).templates.map((template, idx) => (
+        {/* Folders & Files Wrapper */}
+        {filteredTemplates.length > 0 && activeNode && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+            
+            {/* 📁 LIST SUBFOLDERS */}
+            {currentSubfolders.map(([folderKey, subNode]) => {
+              const subTemplatesCount = countTemplatesRecursively(subNode);
+              const icon = getCategoryIcon(subNode.name) || getCategoryIcon(folderKey);
+              
+              return (
                 <button
-                  key={template.id}
-                  onClick={() => handleTemplateClick(template)}
-                  className={`w-full flex items-center gap-3 py-4 px-4 hover:bg-[#9b1c31]/5 text-left group transition-colors ${
-                    idx !== (categoryTrees["General"] || categoryTrees["सामान्य फ़ाइलें"]).templates.length - 1 ? "border-b border-gray-50" : ""
-                  }`}
+                  key={folderKey}
+                  onClick={() => setNavPath(prev => [...prev, folderKey])}
+                  className="w-full flex items-center justify-between py-4 px-4 hover:bg-gray-50 border-b border-gray-100 text-left transition-colors group"
                 >
-                  <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
-                    <FileText className="w-5 h-5 text-blue-500" />
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0 bg-amber-50 group-hover:bg-amber-100 transition-colors">
+                      {icon
+                        ? <img src={icon} alt={subNode.name} className="w-11 h-11 object-cover rounded-xl" />
+                        : <span className="text-2xl">📁</span>
+                      }
+                    </div>
+                    <div className="text-left">
+                      <span className="text-gray-800 text-sm font-bold leading-tight group-hover:text-[#9b1c31] transition-colors">
+                        {subNode.name}
+                      </span>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {subTemplatesCount} {language === "hi" ? "दस्तावेज़" : "documents"}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <span className="text-[#1e3a5f] text-sm font-bold group-hover:text-[#9b1c31] transition-colors leading-tight">
-                      {template.name}
-                    </span>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-[#9b1c31] flex-shrink-0 transition-colors" />
+                  <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-[#9b1c31] group-hover:translate-x-0.5 transition-all flex-shrink-0" />
                 </button>
-              ))}
-            </div>
-          </motion.div>
+              );
+            })}
+
+            {/* 📄 LIST TEMPLATE FILES */}
+            {currentTemplates.map((template, idx) => (
+              <button
+                key={template.id}
+                onClick={() => handleTemplateClick(template)}
+                className={`w-full flex items-center gap-3 py-4 px-4 hover:bg-[#9b1c31]/5 text-left group transition-colors ${
+                  idx !== currentTemplates.length - 1 || currentSubfolders.length > 0 ? "border-b border-gray-50" : ""
+                }`}
+              >
+                <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0 group-hover:bg-[#9b1c31]/10 transition-colors">
+                  <FileText className="w-5 h-5 text-blue-500 group-hover:text-[#9b1c31] transition-colors" />
+                </div>
+                <div className="flex-1">
+                  <span className="text-[#1e3a5f] text-sm font-bold group-hover:text-[#9b1c31] transition-colors leading-tight">
+                    {template.name}
+                  </span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-[#9b1c31] flex-shrink-0 transition-colors" />
+              </button>
+            ))}
+          </div>
         )}
       </div>
-
     </div>
   );
 }

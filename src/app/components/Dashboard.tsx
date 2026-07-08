@@ -196,32 +196,7 @@ export function Dashboard({
           <User style={{ width: 22, height: 22, color: "white" }} />
         </button>
 
-        {/* Language toggle – top-left corner */}
-        <button
-          onClick={handleLanguageToggle}
-          style={{
-            position: "absolute",
-            top: 14,
-            left: 14,
-            zIndex: 30,
-            height: 32,
-            borderRadius: 20,
-            background: "rgba(255,255,255,0.18)",
-            border: "1.5px solid rgba(255,255,255,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            padding: "0 12px",
-            gap: 6,
-            backdropFilter: "blur(6px)"
-          }}
-        >
-          <Globe style={{ width: 14, height: 14, color: "white" }} />
-          <span style={{ fontSize: 12, fontWeight: 800, color: "white", letterSpacing: 0.3 }}>
-            {language === "hi" ? "EN" : "हिं"}
-          </span>
-        </button>
+
 
         {/* Text content – left side, starts below status bar */}
         <div style={{ position: "relative", zIndex: 10, padding: "0px 20px 8px" }}>

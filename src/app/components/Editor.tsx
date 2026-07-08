@@ -29,6 +29,10 @@ function wireEditableField(span: HTMLElement) {
 
   span.contentEditable = "true";
   span.setAttribute("spellcheck", "false");
+  // Re-enable selection and caret inside editable spans (overrides article's user-select:none)
+  span.style.userSelect = "text";
+  (span.style as any).webkitUserSelect = "text";
+  span.style.caretColor = "#111";
 
   // Initialize classes based on actual content (handles restored drafts and paginated fields)
   const isTdField = span.classList.contains("td-field");
@@ -37,6 +41,7 @@ function wireEditableField(span: HTMLElement) {
     if (currentText.length > 0 && currentText !== span.dataset.placeholder) {
       span.classList.remove("is-empty");
       span.classList.add("has-value");
+      span.style.removeProperty("padding-right");
     } else {
       span.classList.add("is-empty");
       span.classList.remove("has-value");
@@ -46,6 +51,12 @@ function wireEditableField(span: HTMLElement) {
     const hasText = text.length > 0;
     span.classList.toggle("is-empty", !hasText);
     span.classList.toggle("has-value", hasText);
+    if (hasText) {
+      span.style.removeProperty("padding-right");
+    } else if (span.dataset.placeholder) {
+      const w = Math.max(60, Math.round(span.dataset.placeholder.length * 5.5));
+      span.style.setProperty("padding-right", `${w}px`, "important");
+    }
   }
 
   span.addEventListener("paste", e => {
@@ -65,7 +76,10 @@ function wireEditableField(span: HTMLElement) {
         const range = document.createRange();
         let textNode = span.firstChild;
         if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
-          textNode = document.createTextNode("");
+          // CRITICAL: Must use \u200B (zero-width space), NOT empty string ""
+          // An empty text node has no physical position for the caret to land on,
+          // so Android falls back to the nearest text it finds — the static word next to it.
+          textNode = document.createTextNode("\u200B");
           span.innerHTML = "";
           span.appendChild(textNode);
         }
@@ -87,10 +101,15 @@ function wireEditableField(span: HTMLElement) {
         span.classList.remove("has-value");
       }
     } else {
-      if (currentText === "") {
+      const cleaned = currentText.replace(/\u200B/g, "").replace(/\uFEFF/g, "").trim();
+      if (cleaned === "") {
         span.textContent = "\u200B"; // Truly empty look — CSS handles layout size
         span.classList.add("is-empty");
         span.classList.remove("has-value");
+        if (span.dataset.placeholder) {
+          const w = Math.max(60, Math.round(span.dataset.placeholder.length * 5.5));
+          span.style.setProperty("padding-right", `${w}px`, "important");
+        }
       }
     }
   });
@@ -105,8 +124,15 @@ function wireEditableField(span: HTMLElement) {
     span.classList.toggle("is-empty", !hasText);
     span.classList.toggle("has-value", hasText);
 
-    if (isTdField && !hasText) {
-      span.textContent = "\u200B";
+    if (hasText) {
+      span.style.removeProperty("padding-right");
+    } else {
+      if (isTdField) {
+        span.textContent = "\u200B";
+      } else if (span.dataset.placeholder) {
+        const w = Math.max(60, Math.round(span.dataset.placeholder.length * 5.5));
+        span.style.setProperty("padding-right", `${w}px`, "important");
+      }
     }
   });
 
@@ -386,10 +412,11 @@ function injectAndWire(container: HTMLElement): void {
           ancestor = ancestor.parentNode;
         }
 
-        // Dynamic min-width so each dotted field has an appropriate visible width
+        // Dynamic width using padding-right so each dotted field has an appropriate visible width
+        // in inline display mode, avoiding the inline-block caret placement bug
         if (!isInTable) {
-          const minW = Math.max(60, Math.round(part.length * 5.5));
-          span.style.setProperty("min-width", `${minW}px`, "important");
+          const w = Math.max(60, Math.round(part.length * 5.5));
+          span.style.setProperty("padding-right", `${w}px`, "important");
         }
 
         frag.appendChild(span);
@@ -530,6 +557,24 @@ function breakPagesDynamically(container: HTMLElement) {
   for (const sec of originalSections) {
     paginateSection(sec);
   }
+
+  // CRITICAL: Re-apply article styles on all pages (original + split ones)
+  container.querySelectorAll("article").forEach(article => {
+    const el = article as HTMLElement;
+    el.contentEditable = "false";
+    el.spellcheck = false;
+    el.style.cursor = "default";
+    el.style.outline = "none";
+    el.style.caretColor = "transparent"; // hide caret on static article areas
+    el.style.userSelect = "none";         // block text selection in static areas
+    (el.style as any).webkitUserSelect = "none"; // iOS/Android Chrome
+  });
+
+  // CRITICAL: Re-wire all fields in the entire container so event listeners
+  // are active on split/cloned pages (since cloneNode does not copy event listeners)
+  container.querySelectorAll(".legal-editable-field").forEach(field => {
+    wireEditableField(field as HTMLElement);
+  });
 }
 
 // A4 page usable height in CSS pixels at 96dpi (≈ 297mm → 1122px) minus top+bottom padding (96px)
@@ -1651,14 +1696,16 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
         const x = (window.innerWidth - A4_W * scale) / 2;
         applyTransform(x, 0, scale);
 
-        // Setup articles
+        // Setup articles — completely block native caret from landing in static text
         docxRef.current!.querySelectorAll("article").forEach(article => {
           const el = article as HTMLElement;
           el.contentEditable = "false";
           el.spellcheck = false;
           el.style.cursor = "default";
           el.style.outline = "none";
-          el.style.caretColor = "#111";
+          el.style.caretColor = "transparent"; // hide caret on static article areas
+          el.style.userSelect = "none";         // block text selection in static areas
+          (el.style as any).webkitUserSelect = "none"; // iOS/Android Chrome
         });
 
         // Merge adjacent editable fields first (handles loading existing/restored drafts)
@@ -1687,6 +1734,16 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
           const hasText = cleaned.trim().length > 0;
           f.classList.toggle("is-empty", !hasText);
           f.classList.toggle("has-value", hasText);
+
+          if (hasText) {
+            f.style.removeProperty("padding-right");
+          } else {
+            const isTdField = f.classList.contains("td-field");
+            if (!isTdField && f.dataset.placeholder) {
+              const w = Math.max(60, Math.round(f.dataset.placeholder.length * 5.5));
+              f.style.setProperty("padding-right", `${w}px`, "important");
+            }
+          }
         });
 
         // Save state to undo stack with a debounce to group typing operations
@@ -1718,6 +1775,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
         savedRangeRef.current = sel.getRangeAt(0).cloneRange();
       }
     };
+
     // ── TAP vs SWIPE discriminator ────────────────────────────────────────────
     // We record the touchstart position, then on touchend we check if the
     // finger moved significantly. If movement > 8px it was a SCROLL/SWIPE and
@@ -1752,19 +1810,19 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       // If they tapped directly ON a contentEditable field, let browser handle it natively
       if (target.isContentEditable || target.closest("[contenteditable='true']")) return;
 
-      // Tapped on static text or empty margin — redirect to nearest field
+      // Tapped on static text or empty margin — redirect to nearest field inside that same page
       const section = target.closest("section.docx") as HTMLElement;
       if (!section) return;
 
-      // Use TAP coordinates to find closest editable field
       const clientX = endX;
       const clientY = endY;
 
-      // STRICT 40px proximity threshold — only snap to fields that are very close
-      const MAX_SNAP_DISTANCE = 40;
-      const allFields = Array.from(container.querySelectorAll(".legal-editable-field")) as HTMLElement[];
+      // Find the absolute closest field in this specific section/page.
+      // By using Infinity and locking search to this page/section, any tap on the page's
+      // static text will map to a valid field on that page and prevent caret landing in static text.
+      const allFields = Array.from(section.querySelectorAll(".legal-editable-field")) as HTMLElement[];
       let closestField: HTMLElement | null = null;
-      let minDist = MAX_SNAP_DISTANCE;
+      let minDist = Infinity;
 
       for (const f of allFields) {
         const rect = f.getBoundingClientRect();
@@ -1778,7 +1836,6 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       }
 
       if (closestField) {
-        e.preventDefault(); // Prevent default only for confirmed taps near a field
         closestField.focus();
         requestAnimationFrame(() => {
           const sel = window.getSelection();
@@ -1810,9 +1867,9 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       const clientX = e.clientX;
       const clientY = e.clientY;
 
-      const allFields = Array.from(container.querySelectorAll(".legal-editable-field")) as HTMLElement[];
+      const allFields = Array.from(section.querySelectorAll(".legal-editable-field")) as HTMLElement[];
       let closestField: HTMLElement | null = null;
-      let minDist = 40;
+      let minDist = Infinity;
 
       for (const f of allFields) {
         const rect = f.getBoundingClientRect();
@@ -1827,6 +1884,20 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
 
       if (closestField) {
         closestField.focus();
+        const sel = window.getSelection();
+        if (sel) {
+          let textNode = closestField.firstChild;
+          if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+            textNode = document.createTextNode("\u200B");
+            closestField.innerHTML = "";
+            closestField.appendChild(textNode);
+          }
+          const range = document.createRange();
+          range.setStart(textNode, textNode.textContent?.length || 0);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
       }
     };
 
@@ -1845,15 +1916,17 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
 
     container.addEventListener("input", handleInput);
     container.addEventListener("click", handleClick);
-    container.addEventListener("mousedown", handleTouchOrMouseDown);
-    container.addEventListener("touchstart", handleTouchOrMouseDown, { passive: false });
+    container.addEventListener("mousedown", handleMouseDown);
+    container.addEventListener("touchstart", handleTouchStart, { passive: true });
+    container.addEventListener("touchend", handleTouchEnd, { passive: false });
     container.addEventListener("focusin", handleFocusIn);
 
     const cleanup = () => {
       container.removeEventListener("input", handleInput);
       container.removeEventListener("click", handleClick);
-      container.removeEventListener("mousedown", handleTouchOrMouseDown);
-      container.removeEventListener("touchstart", handleTouchOrMouseDown);
+      container.removeEventListener("mousedown", handleMouseDown);
+      container.removeEventListener("touchstart", handleTouchStart);
+      container.removeEventListener("touchend", handleTouchEnd);
       container.removeEventListener("focusin", handleFocusIn);
     };
 
@@ -2079,7 +2152,9 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
         el.spellcheck = false;
         el.style.cursor = "default";
         el.style.outline = "none";
-        el.style.caretColor = "#111";
+        el.style.caretColor = "transparent"; // hide caret on static article areas
+        el.style.userSelect = "none";         // block text selection in static areas
+        (el.style as any).webkitUserSelect = "none"; // iOS/Android Chrome
       });
 
       // Recalculate pages
