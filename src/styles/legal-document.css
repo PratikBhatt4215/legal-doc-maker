@@ -40,6 +40,26 @@
   caret-color: #111 !important;
 }
 
+/* Prevent justified stretching in paragraphs with editable fields */
+.docx-wrapper > section.docx article p:has(.legal-editable-field),
+.docx-wrapper > section.docx article td:has(.legal-editable-field),
+.docx-wrapper > section.docx article div:has(.legal-editable-field) {
+  text-align: left !important;
+}
+
+/* Retain center/right if explicitly centered or right-aligned */
+.docx-wrapper > section.docx article p.align-center:has(.legal-editable-field),
+.docx-wrapper > section.docx article p[style*="text-align: center"]:has(.legal-editable-field),
+.docx-wrapper > section.docx article p[style*="text-align:center"]:has(.legal-editable-field) {
+  text-align: center !important;
+}
+
+.docx-wrapper > section.docx article p.align-right:has(.legal-editable-field),
+.docx-wrapper > section.docx article p[style*="text-align: right"]:has(.legal-editable-field),
+.docx-wrapper > section.docx article p[style*="text-align:right"]:has(.legal-editable-field) {
+  text-align: right !important;
+}
+
 .docx-wrapper {
   background-color: #e2e8f0 !important;
   padding: 32px 0 !important;
