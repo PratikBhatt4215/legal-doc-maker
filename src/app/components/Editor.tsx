@@ -1801,6 +1801,60 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       return;
     };
 
+    const findFirstEditableFieldInside = (node: Node): HTMLElement | null => {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as HTMLElement;
+        if (el.classList.contains("legal-editable-field")) return el;
+        const found = el.querySelector(".legal-editable-field");
+        if (found) return found as HTMLElement;
+      }
+      return null;
+    };
+
+    const findLastEditableFieldInside = (node: Node): HTMLElement | null => {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as HTMLElement;
+        if (el.classList.contains("legal-editable-field")) return el;
+        const fields = el.querySelectorAll(".legal-editable-field");
+        if (fields.length > 0) return fields[fields.length - 1] as HTMLElement;
+      }
+      return null;
+    };
+
+    const findNextEditableField = (node: Node): HTMLElement | null => {
+      let curr: Node | null = node;
+      while (curr) {
+        if (curr.nextSibling) {
+          curr = curr.nextSibling;
+          const found = findFirstEditableFieldInside(curr);
+          if (found) return found;
+        } else {
+          curr = curr.parentNode;
+          if (curr && (curr as HTMLElement).tagName === "ARTICLE") {
+            break;
+          }
+        }
+      }
+      return null;
+    };
+
+    const findPrevEditableField = (node: Node): HTMLElement | null => {
+      let curr: Node | null = node;
+      while (curr) {
+        if (curr.previousSibling) {
+          curr = curr.previousSibling;
+          const found = findLastEditableFieldInside(curr);
+          if (found) return found;
+        } else {
+          curr = curr.parentNode;
+          if (curr && (curr as HTMLElement).tagName === "ARTICLE") {
+            break;
+          }
+        }
+      }
+      return null;
+    };
+
     const focusField = (field: HTMLElement, position: 0 | -1) => {
       field.focus();
       const sel = window.getSelection();
@@ -1832,14 +1886,14 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       if (node.nodeType === Node.TEXT_NODE) {
         const textContent = node.textContent || "";
         if (offset === textContent.length) {
-          const next = node.nextSibling;
-          if (next && next.nodeType === Node.ELEMENT_NODE && (next as HTMLElement).classList.contains("legal-editable-field")) {
-            focusField(next as HTMLElement, 0);
+          const nextField = findNextEditableField(node);
+          if (nextField) {
+            focusField(nextField, 0);
           }
         } else if (offset === 0) {
-          const prev = node.previousSibling;
-          if (prev && prev.nodeType === Node.ELEMENT_NODE && (prev as HTMLElement).classList.contains("legal-editable-field")) {
-            focusField(prev as HTMLElement, -1);
+          const prevField = findPrevEditableField(node);
+          if (prevField) {
+            focusField(prevField, -1);
           }
         }
       } else if (node.nodeType === Node.ELEMENT_NODE) {
@@ -1847,8 +1901,9 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
         const children = parent.childNodes;
         if (offset < children.length) {
           const next = children[offset];
-          if (next && next.nodeType === Node.ELEMENT_NODE && (next as HTMLElement).classList.contains("legal-editable-field")) {
-            focusField(next as HTMLElement, 0);
+          const nextField = findFirstEditableFieldInside(next);
+          if (nextField) {
+            focusField(nextField, 0);
           }
         }
       }
