@@ -1801,6 +1801,59 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       return;
     };
 
+    const focusField = (field: HTMLElement, position: 0 | -1) => {
+      field.focus();
+      const sel = window.getSelection();
+      if (!sel) return;
+      let textNode = field.firstChild;
+      if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+        textNode = document.createTextNode("\u200B");
+        field.innerHTML = "";
+        field.appendChild(textNode);
+      }
+      const range = document.createRange();
+      const textLen = textNode.textContent?.length || 0;
+      const targetOffset = position === 0 ? 0 : textLen;
+      range.setStart(textNode, Math.min(targetOffset, textLen));
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    };
+
+    const handleSelectionChange = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      if (!range.collapsed) return;
+
+      const node = range.startContainer;
+      const offset = range.startOffset;
+
+      if (node.nodeType === Node.TEXT_NODE) {
+        const textContent = node.textContent || "";
+        if (offset === textContent.length) {
+          const next = node.nextSibling;
+          if (next && next.nodeType === Node.ELEMENT_NODE && (next as HTMLElement).classList.contains("legal-editable-field")) {
+            focusField(next as HTMLElement, 0);
+          }
+        } else if (offset === 0) {
+          const prev = node.previousSibling;
+          if (prev && prev.nodeType === Node.ELEMENT_NODE && (prev as HTMLElement).classList.contains("legal-editable-field")) {
+            focusField(prev as HTMLElement, -1);
+          }
+        }
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const parent = node as HTMLElement;
+        const children = parent.childNodes;
+        if (offset < children.length) {
+          const next = children[offset];
+          if (next && next.nodeType === Node.ELEMENT_NODE && (next as HTMLElement).classList.contains("legal-editable-field")) {
+            focusField(next as HTMLElement, 0);
+          }
+        }
+      }
+    };
+
     const handleFocusIn = (e: FocusEvent) => {
       const target = e.target as HTMLElement;
       if (target && target.classList.contains("legal-editable-field")) {
@@ -1820,6 +1873,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
     container.addEventListener("touchstart", handleTouchStart, { passive: true });
     container.addEventListener("touchend", handleTouchEnd, { passive: false });
     container.addEventListener("focusin", handleFocusIn);
+    document.addEventListener("selectionchange", handleSelectionChange);
 
     const cleanup = () => {
       container.removeEventListener("input", handleInput);
@@ -1828,6 +1882,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       container.removeEventListener("touchstart", handleTouchStart);
       container.removeEventListener("touchend", handleTouchEnd);
       container.removeEventListener("focusin", handleFocusIn);
+      document.removeEventListener("selectionchange", handleSelectionChange);
     };
 
     // ── GUARD: only fetch/render once per formId/customFile ──────────
