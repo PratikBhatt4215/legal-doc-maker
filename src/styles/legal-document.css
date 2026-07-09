@@ -13,11 +13,16 @@
   to   { opacity: 1; }
 }
 
-/* ── Grey Background & Page Gaps (MS Word Print Layout) ── */
-
-.legal-editable-field.is-empty {
+.placeholder-layer {
   color: #94a3b8 !important; /* Soft grey color for native placeholder dots */
+  user-select: none;
 }
+
+.legal-editable-field.has-value .placeholder-layer {
+  display: none;
+}
+
+
 
 /* Allow editing and caret placement across the entire page */
 .docx-wrapper > section.docx article,
@@ -27,14 +32,8 @@
   caret-color: #111 !important;
 }
 
-/* Prevent justified stretching in paragraphs with editable fields */
-.docx-wrapper > section.docx article p:has(.legal-editable-field),
-.docx-wrapper > section.docx article td:has(.legal-editable-field),
-.docx-wrapper > section.docx article div:has(.legal-editable-field) {
-  text-align: left !important;
-}
-
-/* Retain center/right if explicitly centered or right-aligned */
+/* Paragraphs containing fields keep their original text-align from the Word doc.
+   Only override center/right if explicitly set — do NOT force left on justified text. */
 .docx-wrapper > section.docx article p.align-center:has(.legal-editable-field),
 .docx-wrapper > section.docx article p[style*="text-align: center"]:has(.legal-editable-field),
 .docx-wrapper > section.docx article p[style*="text-align:center"]:has(.legal-editable-field) {
@@ -233,55 +232,13 @@ article[contenteditable="true"] {
   color: inherit !important;
 }
 
-/* ── 1. Empty State: dotted underline, shows the blank fill-in area ── */
-.legal-editable-field.is-empty {
-  display: inline !important;
-  border-bottom: 1.5px dotted #94a3b8 !important;
-  color: #111 !important;
-  background: transparent !important;
-  vertical-align: baseline !important;
-  outline: none !important;
-  font-size: inherit !important;
-  font-family: inherit !important;
-  /* Ensure an empty span has visible height */
-  min-height: 1em !important;
-}
-
-/* Empty field cursor — place a blinking caret placeholder so user knows it's tappable */
-.legal-editable-field.is-empty:empty::before {
-  content: '\00a0'; /* non-breaking space keeps the span from collapsing */
-  pointer-events: none;
-  opacity: 0; /* invisible but occupies space so cursor lands correctly */
-}
-
-/* ── 2. Filled State: dotted line removed, typed text flows inline ── */
+/* ── Filled State: inherit all colors/fonts from the original Word doc ── */
 .legal-editable-field.has-value {
   display: inline !important;
   color: inherit !important;
-  font-weight: inherit !important;
-  font-size: inherit !important;
-  font-family: inherit !important;
-  line-height: inherit !important;
   background: transparent !important;
   border: none !important;
-  border-bottom: none !important;
   text-decoration: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  outline: none !important;
-  min-width: unset !important;
-  min-height: unset !important;
-}
-
-/* Kill border/underline that parent <u> or <span> elements from docx may inherit into the field */
-.legal-editable-field.has-value,
-.legal-editable-field.has-value *,
-.legal-editable-field.has-value::before,
-.legal-editable-field.has-value::after {
-  border-bottom: none !important;
-  text-decoration: none !important;
-  border: none !important;
 }
 
 /* But allow explicit <u> tags typed by the user inside a filled field */

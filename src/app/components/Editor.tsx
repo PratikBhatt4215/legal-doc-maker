@@ -27,114 +27,37 @@ function wireEditableField(span: HTMLElement) {
   if ((span as any)._wired) return;
   (span as any)._wired = true;
 
-  span.contentEditable = "true";
+  // DO NOT set span.contentEditable = 'true'.
+  // The parent article is already contentEditable. Nesting contentEditable elements
+  // causes Android WebView's IME to insert every character at offset 0 (reversed typing).
+  // The span content is fully editable through the article's contentEditable.
   span.setAttribute("spellcheck", "false");
-  // Re-enable selection and caret inside editable spans (overrides article's user-select:none)
-  span.style.userSelect = "text";
-  (span.style as any).webkitUserSelect = "text";
-  span.style.caretColor = "#111";
 
-  // Initialize classes based on actual content (handles restored drafts and paginated fields)
-  const isTdField = span.classList.contains("td-field");
   const currentText = span.textContent || "";
-  if (isTdField) {
-    if (currentText.length > 0 && currentText !== span.dataset.placeholder) {
-      span.classList.remove("is-empty");
-      span.classList.add("has-value");
-      span.style.removeProperty("padding-right");
-    } else {
-      span.classList.add("is-empty");
-      span.classList.remove("has-value");
-    }
+  const isPlaceholder = span.getAttribute("data-is-placeholder-text") === "true" || 
+                        currentText === span.dataset.placeholder || 
+                        currentText.replace(/\u200B/g, "").trim() === "";
+
+  if (isPlaceholder) {
+    span.setAttribute("data-is-placeholder-text", "true");
+    
+    // We use a physical child span for the dots so they can wrap across lines naturally.
+    // By splitting the placeholder in half and placing the zero-width space in the middle,
+    // the Android cursor naturally blinks in the dead center of the dotted line!
+    const placeholder = span.dataset.placeholder || "";
+    const splitIndex = Math.max(1, Math.floor(placeholder.length * 0.5));
+    const left = placeholder.substring(0, splitIndex);
+    const right = placeholder.substring(splitIndex);
+    
+    span.innerHTML = `<span class="placeholder-layer placeholder-layer-left" contenteditable="false">${left}</span>\u200B<span class="placeholder-layer placeholder-layer-right" contenteditable="false">${right}</span>`;
+    
+    span.classList.add("is-empty");
+    span.classList.remove("has-value");
   } else {
-    const text = currentText.replace(/\u200B/g, "").trim();
-    const hasText = text.length > 0;
-    span.classList.toggle("is-empty", !hasText);
-    span.classList.toggle("has-value", hasText);
-    if (hasText) {
-      span.style.removeProperty("padding-right");
-    } else if (span.dataset.placeholder) {
-      const w = Math.max(60, Math.round(span.dataset.placeholder.length * 5.5));
-      span.style.setProperty("padding-right", `${w}px`, "important");
-    }
+    span.removeAttribute("data-is-placeholder-text");
+    span.classList.remove("is-empty");
+    span.classList.add("has-value");
   }
-
-  span.addEventListener("paste", e => {
-    e.preventDefault();
-    toast.error("Pasting is restricted inside the editor.");
-  });
-
-  span.addEventListener("focus", () => {
-    // Only force caret position to the end for empty fields (no user text entered yet)
-    if (!span.classList.contains("is-empty")) return;
-
-    const sel = window.getSelection();
-    if (sel) {
-      // Small defer so Android keyboard has time to register the focus
-      requestAnimationFrame(() => {
-        if (!span.classList.contains("is-empty")) return;
-        const range = document.createRange();
-        let textNode = span.firstChild;
-        if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
-          // CRITICAL: Must use \u200B (zero-width space), NOT empty string ""
-          // An empty text node has no physical position for the caret to land on,
-          // so Android falls back to the nearest text it finds — the static word next to it.
-          textNode = document.createTextNode("\u200B");
-          span.innerHTML = "";
-          span.appendChild(textNode);
-        }
-        range.setStart(textNode, textNode.textContent?.length || 0);
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
-      });
-    }
-  });
-
-  span.addEventListener("blur", () => {
-    const isTdField = span.classList.contains("td-field");
-    const currentText = (span.textContent || "").trim();
-    if (isTdField) {
-      if (currentText === "") {
-        span.textContent = "\u200B";
-        span.classList.add("is-empty");
-        span.classList.remove("has-value");
-      }
-    } else {
-      const cleaned = currentText.replace(/\u200B/g, "").replace(/\uFEFF/g, "").trim();
-      if (cleaned === "") {
-        span.textContent = "\u200B"; // Truly empty look — CSS handles layout size
-        span.classList.add("is-empty");
-        span.classList.remove("has-value");
-        if (span.dataset.placeholder) {
-          const w = Math.max(60, Math.round(span.dataset.placeholder.length * 5.5));
-          span.style.setProperty("padding-right", `${w}px`, "important");
-        }
-      }
-    }
-  });
-
-  span.addEventListener("input", () => {
-    const isTdField = span.classList.contains("td-field");
-    // Strip any zero-width spaces injected by Android/browser so isEmpty check is accurate
-    const raw = span.textContent || "";
-    const cleaned = raw.replace(/\u200B/g, "").replace(/\uFEFF/g, "");
-    const hasText = cleaned.trim().length > 0;
-
-    span.classList.toggle("is-empty", !hasText);
-    span.classList.toggle("has-value", hasText);
-
-    if (hasText) {
-      span.style.removeProperty("padding-right");
-    } else {
-      if (isTdField) {
-        span.textContent = "\u200B";
-      } else if (span.dataset.placeholder) {
-        const w = Math.max(60, Math.round(span.dataset.placeholder.length * 5.5));
-        span.style.setProperty("padding-right", `${w}px`, "important");
-      }
-    }
-  });
 
   span.addEventListener("keydown", (e: KeyboardEvent) => {
     if (e.key === "Backspace") {
@@ -321,6 +244,7 @@ function injectAndWire(container: HTMLElement): void {
 
   // Convert spaces-only styled underlines (from MS Word templates) to editable fields
   container.querySelectorAll("span").forEach(span => {
+
     if (span.classList.contains("legal-editable-field")) return;
 
     const style = span.getAttribute("style") || "";
@@ -334,8 +258,8 @@ function injectAndWire(container: HTMLElement): void {
         span.className = "legal-editable-field is-empty";
         span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         span.dataset.placeholder = text;
-        span.textContent = "\u200B"; // Zero-width space so browser resolves caret inside the span on click
-        
+        span.textContent = text;
+        span.setAttribute("data-is-placeholder-text", "true");
         
         // Strip the underline/border styles from this span and ALL wrapper ancestors
         span.style.textDecoration = "none";
@@ -397,8 +321,9 @@ function injectAndWire(container: HTMLElement): void {
           : false;
         span.className = isInTable ? "legal-editable-field is-empty td-field" : "legal-editable-field is-empty";
         span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        span.dataset.placeholder = isInTable ? "" : part;
-        span.textContent = "\u200B"; // Zero-width space so browser resolves caret inside the span on click
+        span.dataset.placeholder = part;
+        span.textContent = part;
+        span.setAttribute("data-is-placeholder-text", "true");
 
         // Strip text-decoration and borders from all wrapper ancestors up the tree
         let ancestor = parent;
@@ -410,13 +335,6 @@ function injectAndWire(container: HTMLElement): void {
           el.style.borderBottomWidth = "0px";
           el.classList.remove("docx-underline");
           ancestor = ancestor.parentNode;
-        }
-
-        // Dynamic width using padding-right so each dotted field has an appropriate visible width
-        // in inline display mode, avoiding the inline-block caret placement bug
-        if (!isInTable) {
-          const w = Math.max(60, Math.round(part.length * 5.5));
-          span.style.setProperty("padding-right", `${w}px`, "important");
         }
 
         frag.appendChild(span);
@@ -1726,22 +1644,36 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
 
       // Defer DOM read slightly — Android WebView may not have flushed textContent yet
       setTimeout(() => {
-        // Update empty/filled styles for ALL fields in this article using cleaned check
+        // Scan ALL fields — toggle classes based on empty state
         article.querySelectorAll(".legal-editable-field").forEach(field => {
           const f = field as HTMLElement;
-          const raw = f.textContent || "";
-          const cleaned = raw.replace(/\u200B/g, "").replace(/\uFEFF/g, "");
-          const hasText = cleaned.trim().length > 0;
-          f.classList.toggle("is-empty", !hasText);
-          f.classList.toggle("has-value", hasText);
-
-          if (hasText) {
-            f.style.removeProperty("padding-right");
+          // Extract text cleanly by ignoring the physical placeholder layer
+          const clone = f.cloneNode(true) as HTMLElement;
+          clone.querySelectorAll(".placeholder-layer").forEach(layer => layer.remove());
+          
+          const raw = clone.textContent || "";
+          const cleaned = raw.replace(/\u200B/g, "").replace(/\uFEFF/g, "").trim();
+          
+          const isEmpty = cleaned === "";
+          
+          if (isEmpty) {
+            if (f.getAttribute("data-is-placeholder-text") !== "true") {
+              f.setAttribute("data-is-placeholder-text", "true");
+              f.classList.add("is-empty");
+              f.classList.remove("has-value");
+              
+              // Ensure anchor and placeholder layer exist natively in the DOM, split for center alignment
+              const placeholder = f.dataset.placeholder || "";
+              const splitIndex = Math.max(1, Math.floor(placeholder.length * 0.5));
+              const left = placeholder.substring(0, splitIndex);
+              const right = placeholder.substring(splitIndex);
+              f.innerHTML = `<span class="placeholder-layer placeholder-layer-left" contenteditable="false">${left}</span>\u200B<span class="placeholder-layer placeholder-layer-right" contenteditable="false">${right}</span>`;
+            }
           } else {
-            const isTdField = f.classList.contains("td-field");
-            if (!isTdField && f.dataset.placeholder) {
-              const w = Math.max(60, Math.round(f.dataset.placeholder.length * 5.5));
-              f.style.setProperty("padding-right", `${w}px`, "important");
+            if (f.getAttribute("data-is-placeholder-text") === "true" || f.classList.contains("is-empty")) {
+              f.removeAttribute("data-is-placeholder-text");
+              f.classList.remove("is-empty");
+              f.classList.add("has-value");
             }
           }
         });
@@ -1769,7 +1701,29 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       schedulePagination(container);
     };
 
+    const forceCursorInside = (target: HTMLElement) => {
+      const field = target.closest(".legal-editable-field") as HTMLElement;
+      if (field && field.classList.contains("is-empty")) {
+        // Explicitly focus the field's parent article synchronously
+        // DO NOT use requestAnimationFrame here, as Android Webview requires synchronous focus from touch events to open the keyboard!
+        const article = field.closest("article");
+        if (article) article.focus();
+        
+        const sel = window.getSelection();
+        // Find the zero-width space text node which is perfectly in the middle
+        const textNode = Array.from(field.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
+        if (sel && textNode) {
+          const range = document.createRange();
+          range.setStart(textNode, 1);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      }
+    };
+
     const handleClick = (e: MouseEvent) => {
+      forceCursorInside(e.target as HTMLElement);
       const sel = window.getSelection();
       if (sel && sel.rangeCount > 0) {
         savedRangeRef.current = sel.getRangeAt(0).cloneRange();
@@ -1777,136 +1731,33 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
     };
 
     // ── TAP vs SWIPE discriminator ────────────────────────────────────────────
-    // We record the touchstart position, then on touchend we check if the
-    // finger moved significantly. If movement > 8px it was a SCROLL/SWIPE and
-    // we do nothing. If movement <= 8px it was a TAP and we handle focus.
     let tapStartX = 0;
     let tapStartY = 0;
     let tapStartTime = 0;
 
     const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return; // Only single finger taps
+      if (e.touches.length !== 1) return;
       tapStartX = e.touches[0].clientX;
       tapStartY = e.touches[0].clientY;
       tapStartTime = Date.now();
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
-      // Native editor focus handles caret positioning on tap
-      return;
+      if (e.changedTouches.length !== 1) return;
+      
+      const tapDuration = Date.now() - tapStartTime;
+      const dx = e.changedTouches[0].clientX - tapStartX;
+      const dy = e.changedTouches[0].clientY - tapStartY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      // If it's a tap (not a swipe) and duration < 500ms
+      if (distance <= 8 && tapDuration < 500) {
+        forceCursorInside(e.target as HTMLElement);
+      }
     };
 
     const handleMouseDown = (e: MouseEvent) => {
-      // Native editor focus handles caret positioning on click
       return;
-    };
-
-    const findFirstEditableFieldInside = (node: Node): HTMLElement | null => {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        const el = node as HTMLElement;
-        if (el.classList.contains("legal-editable-field")) return el;
-        const found = el.querySelector(".legal-editable-field");
-        if (found) return found as HTMLElement;
-      }
-      return null;
-    };
-
-    const findLastEditableFieldInside = (node: Node): HTMLElement | null => {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        const el = node as HTMLElement;
-        if (el.classList.contains("legal-editable-field")) return el;
-        const fields = el.querySelectorAll(".legal-editable-field");
-        if (fields.length > 0) return fields[fields.length - 1] as HTMLElement;
-      }
-      return null;
-    };
-
-    const findNextEditableField = (node: Node): HTMLElement | null => {
-      let curr: Node | null = node;
-      while (curr) {
-        if (curr.nextSibling) {
-          curr = curr.nextSibling;
-          const found = findFirstEditableFieldInside(curr);
-          if (found) return found;
-        } else {
-          curr = curr.parentNode;
-          if (curr && (curr as HTMLElement).tagName === "ARTICLE") {
-            break;
-          }
-        }
-      }
-      return null;
-    };
-
-    const findPrevEditableField = (node: Node): HTMLElement | null => {
-      let curr: Node | null = node;
-      while (curr) {
-        if (curr.previousSibling) {
-          curr = curr.previousSibling;
-          const found = findLastEditableFieldInside(curr);
-          if (found) return found;
-        } else {
-          curr = curr.parentNode;
-          if (curr && (curr as HTMLElement).tagName === "ARTICLE") {
-            break;
-          }
-        }
-      }
-      return null;
-    };
-
-    const focusField = (field: HTMLElement, position: 0 | -1) => {
-      field.focus();
-      const sel = window.getSelection();
-      if (!sel) return;
-      let textNode = field.firstChild;
-      if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
-        textNode = document.createTextNode("\u200B");
-        field.innerHTML = "";
-        field.appendChild(textNode);
-      }
-      const range = document.createRange();
-      const textLen = textNode.textContent?.length || 0;
-      const targetOffset = position === 0 ? 0 : textLen;
-      range.setStart(textNode, Math.min(targetOffset, textLen));
-      range.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(range);
-    };
-
-    const handleSelectionChange = () => {
-      const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
-      const range = sel.getRangeAt(0);
-      if (!range.collapsed) return;
-
-      const node = range.startContainer;
-      const offset = range.startOffset;
-
-      if (node.nodeType === Node.TEXT_NODE) {
-        const textContent = node.textContent || "";
-        if (offset === textContent.length) {
-          const nextField = findNextEditableField(node);
-          if (nextField) {
-            focusField(nextField, 0);
-          }
-        } else if (offset === 0) {
-          const prevField = findPrevEditableField(node);
-          if (prevField) {
-            focusField(prevField, -1);
-          }
-        }
-      } else if (node.nodeType === Node.ELEMENT_NODE) {
-        const parent = node as HTMLElement;
-        const children = parent.childNodes;
-        if (offset < children.length) {
-          const next = children[offset];
-          const nextField = findFirstEditableFieldInside(next);
-          if (nextField) {
-            focusField(nextField, 0);
-          }
-        }
-      }
     };
 
     const handleFocusIn = (e: FocusEvent) => {
@@ -1928,7 +1779,6 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
     container.addEventListener("touchstart", handleTouchStart, { passive: true });
     container.addEventListener("touchend", handleTouchEnd, { passive: false });
     container.addEventListener("focusin", handleFocusIn);
-    document.addEventListener("selectionchange", handleSelectionChange);
 
     const cleanup = () => {
       container.removeEventListener("input", handleInput);
@@ -1937,7 +1787,6 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       container.removeEventListener("touchstart", handleTouchStart);
       container.removeEventListener("touchend", handleTouchEnd);
       container.removeEventListener("focusin", handleFocusIn);
-      document.removeEventListener("selectionchange", handleSelectionChange);
     };
 
     // ── GUARD: only fetch/render once per formId/customFile ──────────
