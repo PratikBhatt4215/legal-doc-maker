@@ -239,48 +239,7 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
           </div>
         </motion.div>
 
-        {/* Admin Panel Button */}
-        {isAdmin && onOpenAdmin && (
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            onClick={onOpenAdmin}
-            style={{
-              background: "#0c2b5e",
-              borderRadius: 20,
-              padding: 16,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              cursor: "pointer",
-              boxShadow: "0 10px 25px rgba(12,43,94,0.12)",
-              border: "1px solid rgba(255,255,255,0.05)"
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{
-                width: 40,
-                height: 40,
-                borderRadius: 12,
-                background: "rgba(255,255,255,0.12)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center"
-              }}>
-                <Shield size={20} color="white" />
-              </div>
-              <div>
-                <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "white" }}>
-                  {language === "hi" ? "व्यवस्थापक पैनल" : "Admin Panel"}
-                </h4>
-                <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>
-                  {language === "hi" ? "अपना व्यवस्थापक डैशबोर्ड एक्सेस करें" : "Access your admin dashboard"}
-                </p>
-              </div>
-            </div>
-            <ChevronRight size={18} color="white" style={{ opacity: 0.8 }} />
-          </motion.div>
-        )}
+
 
         {/* Subscription Plan Card */}
         <motion.div
@@ -321,7 +280,7 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
                 <h3 style={{ margin: "2px 0 0", fontSize: 16, fontWeight: 800, color: subStatus.active ? "#7e22ce" : "#1e293b" }}>
                   {subStatus.active
                     ? (language === "hi" ? "प्रीमियम प्लान" : "Premium Plan")
-                    : (language === "hi" ? "निःशुल्क / डेमो प्लान" : "Free / Demo Plan")}
+                    : (language === "hi" ? "बुनियादी प्लान (प्रति उपयोग भुगतान)" : "Basic Plan (Pay Per Use)")}
                 </h3>
               </div>
             </div>
@@ -365,9 +324,15 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
             <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#64748b" }}>
               <Clock size={13} />
               <span style={{ fontSize: 12, fontWeight: 500 }}>
-                {subStatus.active && subStatus.expiresAt
-                  ? `${language === "hi" ? "वैध है" : "Valid till"} ${new Date(subStatus.expiresAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`
-                  : (language === "hi" ? "कोई सक्रिय सदस्यता नहीं" : "No active membership")}
+                {(() => {
+                  if (subStatus.active && subStatus.expiresAt) {
+                    const diffTime = new Date(subStatus.expiresAt).getTime() - new Date().getTime();
+                    const diffDays = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+                    const dateStr = new Date(subStatus.expiresAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+                    return `${language === "hi" ? "वैध है" : "Valid till"} ${dateStr} (${diffDays} ${language === "hi" ? "दिन शेष" : "days left"})`;
+                  }
+                  return language === "hi" ? "कोई सक्रिय सदस्यता नहीं" : "No active membership";
+                })()}
               </span>
             </div>
             

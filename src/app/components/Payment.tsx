@@ -241,7 +241,7 @@ export function Payment({ onClose, onSuccess, userInfo }: PaymentProps) {
     setLoading(true);
     setActiveMode(label);
 
-    //const YOUR_UPI_ID = "abcd@ybl"; 
+    const trackingTxnId = `TXN-${Math.random().toString(36).substring(2, 11).toUpperCase()}`;
     const YOUR_UPI_ID = "8766372355@axl"; 
 
     const appName = MESSAGES?.payment?.appName || "Legal Doc Maker";
@@ -253,7 +253,7 @@ export function Payment({ onClose, onSuccess, userInfo }: PaymentProps) {
       pn: appName,
       am: amount,
       cu: "INR",
-      tn: `${description} - ${label}`,
+      tn: `${description} - ${trackingTxnId} - ${label}`,
     });
 
     const deepLinkUrl = `${URI_SCHEMES[label]}?${upiParams.toString()}`;
@@ -282,10 +282,9 @@ export function Payment({ onClose, onSuccess, userInfo }: PaymentProps) {
         } else {
           setLoading(false);
           setActiveMode(null);
+          onSuccess(trackingTxnId);
         }
       }, 1200);
-
-      const trackingTxnId = `TXN-${Math.random().toString(36).substring(2, 11).toUpperCase()}`;
 
     } catch (error) {
       console.error("Native intent failure:", error);

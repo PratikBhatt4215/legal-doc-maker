@@ -1,7 +1,6 @@
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ArrowLeft, CheckCircle2, Crown, Loader2 } from "lucide-react";
-import { openRazorpayCheckout } from "../../lib/razorpay";
 import { storage } from "../../lib/storage";
 import { toast } from "sonner";
 
@@ -24,10 +23,9 @@ const S = {
       "Ad-free premium interface experience",
       "Priority Customer & Gavel Editor Support"
     ],
-    payLabel: "Select Payment Method",
-    gpay: "Pay via Google Pay",
+    payLabel: "Select Payment App",
     phonepe: "Pay via PhonePe",
-    other: "Other UPI / Card / Netbanking",
+    paytm: "Pay via Paytm",
     successToast: "Subscription activated! Enjoy unlimited exports!",
     failToast: "Subscription payment failed. Please try again.",
     errorToast: "An error occurred during subscription setup."
@@ -50,10 +48,9 @@ const S = {
       "विज्ञापन-मुक्त प्रीमियम अनुभव",
       "प्राथमिकता ग्राहक और संपादक सहायता"
     ],
-    payLabel: "भुगतान विधि चुनें",
-    gpay: "Google Pay से भुगतान करें",
+    payLabel: "भुगतान ऐप चुनें",
     phonepe: "PhonePe से भुगतान करें",
-    other: "अन्य UPI / कार्ड / नेटबैंकिंग",
+    paytm: "Paytm से भुगतान करें",
     successToast: "सदस्यता सक्रिय हो गई! असीमित निर्यात का आनंद लें!",
     failToast: "सदस्यता भुगतान विफल। कृपया पुनः प्रयास करें।",
     errorToast: "सदस्यता सेटअप में त्रुटि हुई।"
@@ -71,26 +68,63 @@ export function SubscriptionScreen({ onBack, onSuccess }: SubscriptionScreenProp
   const isHi = storage.loadLanguage() === "hi";
   const T = isHi ? S.hi : S.en;
 
-  const { userData } = storage.loadUserSession();
+  const subStatus = useMemo(() => storage.loadSubscription(), []);
+  const daysLeft = useMemo(() => {
+    if (!subStatus.active || !subStatus.expiresAt) return 0;
+    const diffTime = new Date(subStatus.expiresAt).getTime() - new Date().getTime();
+    return Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+  }, [subStatus]);
 
-  const handleSubscribe = async (label: string, method: string, provider?: string) => {
+  const URI_SCHEMES: Record<string, string> = {
+    "PhonePe": "phonepe://pay",
+    "Paytm": "paytmmp://pay"
+  };
+
+  const handleSubscribe = async (label: "PhonePe" | "Paytm") => {
     setLoading(true);
     setSelectedMethod(label);
 
+    const trackingTxnId = `TXN-${Math.random().toString(36).substring(2, 11).toUpperCase()}`;
+    const YOUR_UPI_ID = "8766372355@axl"; 
+    const appName = "Legal Doc Maker";
+    const description = "Premium 1-Month Subscription";
+    const amount = "350.00"; 
+
+    const upiParams = new URLSearchParams({
+      pa: YOUR_UPI_ID,
+      pn: appName,
+      am: amount,
+      cu: "INR",
+      tn: `${description} - ${trackingTxnId} - ${label}`,
+    });
+
+    const deepLinkUrl = `${URI_SCHEMES[label]}?${upiParams.toString()}`;
+
     try {
-      await openRazorpayCheckout({
-        amount: 350,
-        currency: 'INR',
-        name: 'Legal Docs Maker',
-        description: 'Premium 1-Month Subscription Plan',
-        prefillMethod: method,
-        prefillProvider: provider,
-        userInfo: {
-          name: userData?.displayName || 'Premium User',
-          email: userData?.email || 'user@example.com',
-          contact: userData?.mobile || '9999999999',
-        },
-        onSuccess: (paymentId) => {
+      toast.info(`Launching ${label}...`);
+
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = deepLinkUrl;
+
+      let appOpened = false;
+      const handleBlur = () => { appOpened = true; };
+
+      window.addEventListener("blur", handleBlur);
+      document.body.appendChild(iframe);
+
+      setTimeout(() => {
+        window.removeEventListener("blur", handleBlur);
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+
+        if (!appOpened) {
+          toast.error(`${label} application is not installed.`);
+          setLoading(false);
+          setSelectedMethod(null);
+        } else {
+          setLoading(false);
+          setSelectedMethod(null);
+
           // Calculate expiry: 1 month from now
           const expiryDate = new Date();
           expiryDate.setMonth(expiryDate.getMonth() + 1);
@@ -98,17 +132,12 @@ export function SubscriptionScreen({ onBack, onSuccess }: SubscriptionScreenProp
           storage.saveSubscription(true, expiryDate.toISOString());
           toast.success(T.successToast);
           onSuccess();
-        },
-        onFailure: (error) => {
-          console.error('Subscription payment failed:', error);
-          toast.error(T.failToast);
-          setLoading(false);
-          setSelectedMethod(null);
         }
-      });
-    } catch (e) {
-      console.error(e);
-      toast.error(T.errorToast);
+      }, 1200);
+
+    } catch (error) {
+      console.error("Native intent failure:", error);
+      toast.error(`Could not launch ${label}.`);
       setLoading(false);
       setSelectedMethod(null);
     }
@@ -154,6 +183,32 @@ export function SubscriptionScreen({ onBack, onSuccess }: SubscriptionScreenProp
       {/* Main Content Area */}
       <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 20 }}>
         
+        {/* Active plan banner */}
+        {subStatus.active && subStatus.expiresAt && (
+          <div style={{
+            background: "#f0fdf4",
+            border: "1px solid #bbf7d0",
+            borderRadius: 20,
+            padding: "16px 20px",
+            color: "#166534",
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            boxShadow: "0 4px 12px rgba(22,101,52,0.05)"
+          }}>
+            <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, display: "flex", alignItems: "center", gap: 6 }}>
+              <CheckCircle2 size={16} color="#16a34a" />
+              <span>{isHi ? "सक्रिय सदस्यता उपलब्ध है" : "Active Subscription Plan"}</span>
+            </h4>
+            <p style={{ margin: 0, fontSize: 12, opacity: 0.9, fontWeight: 500 }}>
+              {isHi 
+                ? `आपका प्रीमियम प्लान सक्रिय है। आपके ${daysLeft} दिन शेष हैं।`
+                : `Your Premium Plan is active. You have ${daysLeft} days remaining.`
+              }
+            </p>
+          </div>
+        )}
+
         {/* Plan Spotlight Card */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
@@ -217,31 +272,15 @@ export function SubscriptionScreen({ onBack, onSuccess }: SubscriptionScreenProp
         {/* Premium Swiggy style sliding bottom select buttons */}
         <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
           <p style={{ margin: "0 0 4px", fontSize: 12, color: "#64748b", textAlign: "center", fontWeight: 700, textTransform: "uppercase" }}>
-            {T.payLabel}
+            {subStatus.active
+              ? (isHi ? "सदस्यता नवीनीकृत करें (समय बढ़ाएं)" : "Renew Membership (Extend Plan)")
+              : T.payLabel
+            }
           </p>
-
-          {/* Google Pay Button */}
-          <button
-            onClick={() => handleSubscribe("Google Pay", "upi", "google_pay")}
-            disabled={loading}
-            style={{
-              width: "100%", height: 50, borderRadius: 16,
-              background: "#1e3a5f", color: "white", border: "none",
-              fontWeight: 800, fontSize: 15, display: "flex",
-              alignItems: "center", justifyContent: "center", gap: 8,
-              cursor: "pointer", transition: "all 0.2s"
-            }}
-          >
-            {loading && selectedMethod === "Google Pay" ? (
-              <Loader2 className="w-5 h-5 animate-spin" style={{ marginRight: 6 }} />
-            ) : (
-              <span>{T.gpay}</span>
-            )}
-          </button>
 
           {/* PhonePe Button */}
           <button
-            onClick={() => handleSubscribe("PhonePe", "upi", "phonepe")}
+            onClick={() => handleSubscribe("PhonePe")}
             disabled={loading}
             style={{
               width: "100%", height: 50, borderRadius: 16,
@@ -258,22 +297,22 @@ export function SubscriptionScreen({ onBack, onSuccess }: SubscriptionScreenProp
             )}
           </button>
 
-          {/* Cards / Netbanking */}
+          {/* Paytm Button */}
           <button
-            onClick={() => handleSubscribe("Card / UPI / Netbanking", "card")}
+            onClick={() => handleSubscribe("Paytm")}
             disabled={loading}
             style={{
               width: "100%", height: 50, borderRadius: 16,
-              background: "white", color: "#1e293b", border: "2px solid #cbd5e1",
+              background: "#00baf2", color: "white", border: "none",
               fontWeight: 800, fontSize: 15, display: "flex",
               alignItems: "center", justifyContent: "center", gap: 8,
               cursor: "pointer", transition: "all 0.2s"
             }}
           >
-            {loading && selectedMethod === "Card / UPI / Netbanking" ? (
+            {loading && selectedMethod === "Paytm" ? (
               <Loader2 className="w-5 h-5 animate-spin" style={{ marginRight: 6 }} />
             ) : (
-              <span>{T.other}</span>
+              <span>{T.paytm}</span>
             )}
           </button>
         </div>
