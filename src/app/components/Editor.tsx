@@ -582,7 +582,7 @@ const A4_CONTENT_HEIGHT_PX = 1026;
 
 function hasPageBreak(el: HTMLElement): boolean {
   if (!el) return false;
-  if (el.classList.contains("docx-page-break") || el.classList.contains("last-rendered-page-break")) return true;
+  if (el.classList.contains("docx-page-break")) return true;
   if (el.tagName === "BR" && (el.style.pageBreakBefore === "always" || el.style.pageBreakAfter === "always")) return true;
   
   const style = el.style;
@@ -590,12 +590,12 @@ function hasPageBreak(el: HTMLElement): boolean {
     return true;
   }
   
-  if (el.querySelector(".docx-page-break") || el.querySelector(".last-rendered-page-break")) return true;
+  if (el.querySelector(".docx-page-break")) return true;
   
   const innerBrs = el.querySelectorAll("br, span, div, p");
   for (let i = 0; i < innerBrs.length; i++) {
     const item = innerBrs[i] as HTMLElement;
-    if (item.classList.contains("docx-page-break") || item.classList.contains("last-rendered-page-break")) return true;
+    if (item.classList.contains("docx-page-break")) return true;
     if (item.style.pageBreakBefore === "always" || item.style.pageBreakAfter === "always" || item.style.breakBefore === "page" || item.style.breakAfter === "page") {
       return true;
     }
