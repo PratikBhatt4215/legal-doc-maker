@@ -33,6 +33,8 @@ const CATEGORY_ICONS: Record<string, string> = {
   'CRIMINAL':              iconCriminal,
   'CLAIM':                 iconClaims,
   'Agreement Draft':       iconAgreement,
+  'Agreements Drafts':     iconAgreement,
+  'Agreements & Drafts':   iconAgreement,
   'General Formats':       iconGeneral,
   'General Forms':         iconGeneral,
   'formate':               iconGeneral,
@@ -46,6 +48,8 @@ const CATEGORY_ICONS: Record<string, string> = {
   'दावे':                   iconClaims,
   'विवाह':                  iconMarriage,
   'आरटीआई':                 iconRti,
+  'दस्तावेज़ और समझौते':     iconAgreement,
+  'सामान्य प्रारूप':         iconGeneral,
 };
 
 function getCategoryIcon(name: string): string | undefined {
@@ -247,9 +251,10 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
 
     for (const t of filteredTemplates) {
       // Find or create top-level category node
+      const catUpper = t.category.toUpperCase();
       const topCatName = language === "hi" 
-        ? (CATEGORY_DISPLAY_NAMES_HI[t.category] || CATEGORY_DISPLAY_NAMES[t.category] || t.category)
-        : (CATEGORY_DISPLAY_NAMES[t.category] || t.category);
+        ? (CATEGORY_DISPLAY_NAMES_HI[catUpper] || CATEGORY_DISPLAY_NAMES[catUpper] || t.category)
+        : (CATEGORY_DISPLAY_NAMES[catUpper] || t.category);
       if (!trees[topCatName]) {
         trees[topCatName] = {
           name: topCatName,
@@ -263,9 +268,10 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
       if (t.subPath) {
         for (const s of t.subPath) {
           if (!currentNode.subfolders[s]) {
+            const sUpper = s.toUpperCase();
             const folderDisplayName = language === "hi" 
-              ? (CATEGORY_DISPLAY_NAMES_HI[s] || CATEGORY_DISPLAY_NAMES[s] || s)
-              : (CATEGORY_DISPLAY_NAMES[s] || s);
+              ? (CATEGORY_DISPLAY_NAMES_HI[sUpper] || CATEGORY_DISPLAY_NAMES[sUpper] || s)
+              : (CATEGORY_DISPLAY_NAMES[sUpper] || s);
             currentNode.subfolders[s] = {
               name: folderDisplayName,
               subfolders: {},

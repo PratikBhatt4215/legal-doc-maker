@@ -48,51 +48,114 @@ const FOLDER_TO_COURT_ID: Record<string, string> = {
   'FILE':           'file',
 };
 
-// ── Category folder display names ─────────────────────────────────
-// Makes internal folder names prettier for display in the app.
 export const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
+  // DISTRICT COURT / GENERAL
   'CIVIL':                            'Civil Cases',
+  'CIVIL CASES':                      'Civil Cases',
   'CRIMINAL':                         'Criminal Cases',
+  'CRIMINAL CASES':                   'Criminal Cases',
   'CLAIM':                            'Claims',
-  'FAMILY COURT':                     'Family Court',
-  'REVENUE, MPLRC':                   'Revenue / MPLRC',
+  'AGREEMENTS DRAFTS':                'Agreements & Drafts',
+  'MARRIAGE':                         'Marriage',
   'RTI':                              'RTI',
-  'Upbhokta Forum':                   'Consumer Forum',
+  'GENERAL FORMATES':                 'General Formats',
+  'FORMATE':                          'General Formats',
+  'FORMATE FILES':                    'General Formats',
+  'GENERAL FORMS, COMPUTER PATRAK ETC': 'General Forms',
+  'COMPARATIVE TABLE':                'Comparative Table',
   'COURT FEES AND JURMANA':           'Court Fees & Jurmana',
-  'General forms, computer patrak etc': 'General Forms',
-  'formate':                          'General Formats',
-  'jamanat formates':                 'Bail Formats',
-  'marriage':                         'Marriage',
-  'jamanat applications':             'Bail Applications',
-  'Muslim Law':                       'Muslim Law',
+  'COURT FEES JURMANA LINKS':         'Court Fees & Jurmana',
+
+  // REVENUE
+  'REVENUE':                          'Revenue',
+  'TEHSIL':                           'Tehsil',
+  'COLLECTOR':                        'Collector',
+  'SDM':                              'SDM',
+  'COMMISSIONER':                     'Commissioner',
+  'REVENUE, MPLRC':                   'Revenue / MPLRC',
+
+  // FAMILY COURT
+  'FAMILY COURT':                     'Family Court',
   'NOTICE':                           'Notices',
+  'MUSLIM LAW':                       'Muslim Law',
+
+  // JUVENILE COURT
+  'JUVENILE COURT':                   'Juvenile Court',
+  'KISHOR NYAY BOARD JUBENILE JUSTICE JUVENILE COURT': 'Juvenile Justice',
+
+  // FORUM
+  'FORUM':                            'Consumer Forum',
+  'UPBHOKTA FORUM':                   'Consumer Forum',
+
+  // SUBFOLDERS
+  'FOR PLAINTIFF':                    'Plaintiff Applications',
+  'FOR RESPONDENT':                   'Respondent Applications',
+  'FOR DEFENDENT':                    'Defendant Applications',
+  'JAMANAT APPLICATIONS':             'Bail Applications',
+  'BAIL APPLICATIONS':                'Bail Applications',
+  'JAMANAT FORMATES':                 'Bail Formats',
   '138 NIA':                          'NI Act (138)',
-  'for plaintiff':                    'Plaintiff Applications',
-  'for Respondent':                   'Respondent Applications',
-  'kishor NYAY BOARD JUBENILE JUSTICE Juvenile court': 'Juvenile Justice',
+  'IA APPLICATIONS':                  'IA Applications',
+  'MATRIMONIAL':                      'Matrimonial Cases',
+  'REGISTRAR':                        'Registrar',
+  'FILE':                             'Files',
+  'WE HAVE TO WORK ON FILES':         'BNS & BNSS Resources',
+  'GENERAL':                          'General Files'
 };
 
 export const CATEGORY_DISPLAY_NAMES_HI: Record<string, string> = {
+  // DISTRICT COURT / GENERAL
   'CIVIL':                            'दीवानी मामले',
+  'CIVIL CASES':                      'दीवानी मामले',
   'CRIMINAL':                         'आपराधिक मामले',
+  'CRIMINAL CASES':                   'आपराधिक मामले',
   'CLAIM':                            'दावे',
-  'FAMILY COURT':                     'पारिवारिक न्यायालय',
-  'REVENUE, MPLRC':                   'राजस्व / MPLRC',
+  'AGREEMENTS DRAFTS':                'दस्तावेज़ और समझौते',
+  'MARRIAGE':                         'विवाह',
   'RTI':                              'आरटीआई',
-  'Upbhokta Forum':                   'उपभोक्ता फोरम',
+  'GENERAL FORMATES':                 'सामान्य प्रारूप',
+  'FORMATE':                          'सामान्य प्रारूप',
+  'FORMATE FILES':                    'सामान्य प्रारूप',
+  'GENERAL FORMS, COMPUTER PATRAK ETC': 'सामान्य प्रारूप',
+  'COMPARATIVE TABLE':                'तुलनात्मक तालिका',
   'COURT FEES AND JURMANA':           'कोर्ट फीस और जुर्माना',
-  'General forms, computer patrak etc': 'सामान्य प्रारूप',
-  'formate':                          'सामान्य प्रारूप',
-  'jamanat formates':                 'जमानत प्रारूप',
-  'marriage':                         'विवाह',
-  'jamanat applications':             'जमानत आवेदन',
-  'Muslim Law':                       'मुस्लिम कानून',
+  'COURT FEES JURMANA LINKS':         'कोर्ट फीस और जुर्माना',
+
+  // REVENUE
+  'REVENUE':                          'राजस्व',
+  'TEHSIL':                           'तहसील',
+  'COLLECTOR':                        'कलेक्टर',
+  'SDM':                              'एसडीएम',
+  'COMMISSIONER':                     'कमिश्नर',
+  'REVENUE, MPLRC':                   'राजस्व / MPLRC',
+
+  // FAMILY COURT
+  'FAMILY COURT':                     'पारिवारिक न्यायालय',
   'NOTICE':                           'नोटिस',
+  'MUSLIM LAW':                       'मुस्लिम कानून',
+
+  // JUVENILE COURT
+  'JUVENILE COURT':                   'किशोर न्याय न्यायालय',
+  'KISHOR NYAY BOARD JUBENILE JUSTICE JUVENILE COURT': 'किशोर न्याय',
+
+  // FORUM
+  'FORUM':                            'उपभोक्ता फोरम',
+  'UPBHOKTA FORUM':                   'उपभोक्ता फोरम',
+
+  // SUBFOLDERS
+  'FOR PLAINTIFF':                    'वादी आवेदन',
+  'FOR RESPONDENT':                   'प्रतिवादी आवेदन',
+  'FOR DEFENDENT':                    'प्रतिवादी आवेदन',
+  'JAMANAT APPLICATIONS':             'जमानत आवेदन',
+  'BAIL APPLICATIONS':                'जमानत आवेदन',
+  'JAMANAT FORMATES':                 'जमानत प्रारूप',
   '138 NIA':                          'एनआई एक्ट (138)',
-  'for plaintiff':                    'वादी आवेदन',
-  'for Respondent':                   'प्रतिवादी आवेदन',
-  'kishor NYAY BOARD JUBENILE JUSTICE Juvenile court': 'किशोर न्याय',
-  'General':                          'सामान्य फ़ाइलें',
+  'IA APPLICATIONS':                  'आईए आवेदन',
+  'MATRIMONIAL':                      'वैवाहिक मामले',
+  'REGISTRAR':                        'रजिस्ट्रार कार्यालय',
+  'FILE':                             'फाइलें',
+  'WE HAVE TO WORK ON FILES':         'बीएनएस और बीएनएसएस संसाधन',
+  'GENERAL':                          'सामान्य फ़ाइलें'
 };
 
 // ── Auto-import all .docx files using Vite glob ────────────────────
@@ -194,7 +257,7 @@ function buildRegistry(): TemplateFile[] {
     templates.push({
       id,
       name: displayName,
-      description: CATEGORY_DISPLAY_NAMES[category] || category,
+      description: CATEGORY_DISPLAY_NAMES[category.toUpperCase()] || category,
       filePath: fileUrl as unknown as string,
       language,
       courtId,
