@@ -19,22 +19,9 @@
   color: #94a3b8 !important; /* Soft grey color for native placeholder dots */
 }
 
-/* Block native caret placement in static text */
-.docx-wrapper > section.docx article {
-  user-select: none !important;
-  -webkit-user-select: none !important;
-  caret-color: transparent !important;
-}
-
+/* Allow editing and caret placement across the entire page */
+.docx-wrapper > section.docx article,
 .docx-wrapper > section.docx article * {
-  user-select: none !important;
-  -webkit-user-select: none !important;
-  caret-color: transparent !important;
-}
-
-/* Allow selection and typing inside editable fields */
-.docx-wrapper > section.docx article .legal-editable-field,
-.docx-wrapper > section.docx article .legal-editable-field * {
   user-select: text !important;
   -webkit-user-select: text !important;
   caret-color: #111 !important;

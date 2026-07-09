@@ -561,13 +561,13 @@ function breakPagesDynamically(container: HTMLElement) {
   // CRITICAL: Re-apply article styles on all pages (original + split ones)
   container.querySelectorAll("article").forEach(article => {
     const el = article as HTMLElement;
-    el.contentEditable = "false";
-    el.spellcheck = false;
-    el.style.cursor = "default";
+    el.contentEditable = "true";
+    el.spellcheck = true;
+    el.style.cursor = "text";
     el.style.outline = "none";
-    el.style.caretColor = "transparent"; // hide caret on static article areas
-    el.style.userSelect = "none";         // block text selection in static areas
-    (el.style as any).webkitUserSelect = "none"; // iOS/Android Chrome
+    el.style.caretColor = "#111";
+    el.style.userSelect = "text";
+    (el.style as any).webkitUserSelect = "text";
   });
 
   // CRITICAL: Re-wire all fields in the entire container so event listeners
@@ -1696,16 +1696,16 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
         const x = (window.innerWidth - A4_W * scale) / 2;
         applyTransform(x, 0, scale);
 
-        // Setup articles — completely block native caret from landing in static text
+        // Setup articles — make the entire article contentEditable
         docxRef.current!.querySelectorAll("article").forEach(article => {
           const el = article as HTMLElement;
-          el.contentEditable = "false";
-          el.spellcheck = false;
-          el.style.cursor = "default";
+          el.contentEditable = "true";
+          el.spellcheck = true;
+          el.style.cursor = "text";
           el.style.outline = "none";
-          el.style.caretColor = "transparent"; // hide caret on static article areas
-          el.style.userSelect = "none";         // block text selection in static areas
-          (el.style as any).webkitUserSelect = "none"; // iOS/Android Chrome
+          el.style.caretColor = "#111";
+          el.style.userSelect = "text";
+          (el.style as any).webkitUserSelect = "text";
         });
 
         // Merge adjacent editable fields first (handles loading existing/restored drafts)
@@ -1792,113 +1792,13 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
-      if (e.changedTouches.length !== 1) return;
-
-      const endX = e.changedTouches[0].clientX;
-      const endY = e.changedTouches[0].clientY;
-      const dx = Math.abs(endX - tapStartX);
-      const dy = Math.abs(endY - tapStartY);
-      const elapsed = Date.now() - tapStartTime;
-
-      // If finger moved more than 8px in any direction, or held for more than
-      // 400ms (long-press), it was a scroll/swipe/long-press — do NOT focus.
-      if (dx > 8 || dy > 8 || elapsed > 400) return;
-
-      const target = e.target as HTMLElement;
-      if (!target) return;
-
-      // If they tapped directly ON a contentEditable field, let browser handle it natively
-      if (target.isContentEditable || target.closest("[contenteditable='true']")) return;
-
-      // Tapped on static text or empty margin — redirect to nearest field inside that same page
-      const section = target.closest("section.docx") as HTMLElement;
-      if (!section) return;
-
-      const clientX = endX;
-      const clientY = endY;
-
-      // Find the absolute closest field in this specific section/page.
-      // By using Infinity and locking search to this page/section, any tap on the page's
-      // static text will map to a valid field on that page and prevent caret landing in static text.
-      const allFields = Array.from(section.querySelectorAll(".legal-editable-field")) as HTMLElement[];
-      let closestField: HTMLElement | null = null;
-      let minDist = Infinity;
-
-      for (const f of allFields) {
-        const rect = f.getBoundingClientRect();
-        const dx2 = Math.max(0, rect.left - clientX, clientX - rect.right);
-        const dy2 = Math.max(0, rect.top - clientY, clientY - rect.bottom);
-        const d = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-        if (d < minDist) {
-          minDist = d;
-          closestField = f;
-        }
-      }
-
-      if (closestField) {
-        closestField.focus();
-        requestAnimationFrame(() => {
-          const sel = window.getSelection();
-          if (!sel) return;
-          let textNode = closestField!.firstChild;
-          if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
-            textNode = document.createTextNode("\u200B");
-            closestField!.innerHTML = "";
-            closestField!.appendChild(textNode);
-          }
-          const range = document.createRange();
-          range.setStart(textNode, textNode.textContent?.length || 0);
-          range.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(range);
-        });
-      }
+      // Native editor focus handles caret positioning on tap
+      return;
     };
 
     const handleMouseDown = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target) return;
-      // Only redirect if clicking on non-editable static text
-      if (target.isContentEditable || target.closest("[contenteditable='true']")) return;
-
-      const section = target.closest("section.docx") as HTMLElement;
-      if (!section) return;
-
-      const clientX = e.clientX;
-      const clientY = e.clientY;
-
-      const allFields = Array.from(section.querySelectorAll(".legal-editable-field")) as HTMLElement[];
-      let closestField: HTMLElement | null = null;
-      let minDist = Infinity;
-
-      for (const f of allFields) {
-        const rect = f.getBoundingClientRect();
-        const dx2 = Math.max(0, rect.left - clientX, clientX - rect.right);
-        const dy2 = Math.max(0, rect.top - clientY, clientY - rect.bottom);
-        const d = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-        if (d < minDist) {
-          minDist = d;
-          closestField = f;
-        }
-      }
-
-      if (closestField) {
-        closestField.focus();
-        const sel = window.getSelection();
-        if (sel) {
-          let textNode = closestField.firstChild;
-          if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
-            textNode = document.createTextNode("\u200B");
-            closestField.innerHTML = "";
-            closestField.appendChild(textNode);
-          }
-          const range = document.createRange();
-          range.setStart(textNode, textNode.textContent?.length || 0);
-          range.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(range);
-        }
-      }
+      // Native editor focus handles caret positioning on click
+      return;
     };
 
     const handleFocusIn = (e: FocusEvent) => {
@@ -2148,13 +2048,13 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       // Setup articles
       container.querySelectorAll("article").forEach(article => {
         const el = article as HTMLElement;
-        el.contentEditable = "false";
-        el.spellcheck = false;
-        el.style.cursor = "default";
+        el.contentEditable = "true";
+        el.spellcheck = true;
+        el.style.cursor = "text";
         el.style.outline = "none";
-        el.style.caretColor = "transparent"; // hide caret on static article areas
-        el.style.userSelect = "none";         // block text selection in static areas
-        (el.style as any).webkitUserSelect = "none"; // iOS/Android Chrome
+        el.style.caretColor = "#111";
+        el.style.userSelect = "text";
+        (el.style as any).webkitUserSelect = "text";
       });
 
       // Recalculate pages
