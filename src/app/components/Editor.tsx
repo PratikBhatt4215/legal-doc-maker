@@ -465,6 +465,15 @@ function alignSignatures(container: HTMLElement) {
         return;
       }
 
+      // If the paragraph has a large native left indent (> 120pt / ~1.6 inches),
+      // Word has natively positioned it on the right half of the page (e.g., "[आपका नाम], पिता का नाम: ... अपीलार्थी:").
+      // Converting it to flex would break Word's native indent and word wrap.
+      const ml = parseFloat(p.style.marginLeft || "0");
+      const pl = parseFloat(p.style.paddingLeft || "0");
+      if (ml > 120 || pl > 120) {
+        return;
+      }
+
       const tabStops = Array.from(p.querySelectorAll(".docx-tab-stop")) as HTMLElement[];
       if (tabStops.length > 0) {
         let totalTabWidthPt = 0;
@@ -481,7 +490,16 @@ function alignSignatures(container: HTMLElement) {
         
         // Dynamic check: short paragraphs (< 110 chars) with either multiple tabs or significant tab width (> 80pt)
         if ((totalTabWidthPt > 80 || tabStops.length >= 2) && text.length < 110) {
-          const lastTab = tabStops[tabStops.length - 1];
+          // Filter out trailing tab stops (tabs where everything after them up to p.lastChild is only whitespace or tabs)
+          const validTabStops = tabStops.filter(tab => {
+            const range = document.createRange();
+            range.setStartAfter(tab);
+            range.setEndAfter(p.lastChild!);
+            const afterText = (range.cloneContents().textContent || "").replace(/\u200B/g, "").trim();
+            return afterText.length > 0;
+          });
+          if (validTabStops.length === 0) return;
+          const lastTab = validTabStops[validTabStops.length - 1];
 
           // CRITICAL GATE: Only proceed if the paragraph contains at least one editable field,
           // dot/underscore pattern, or strict signature keywords.
@@ -490,7 +508,8 @@ function alignSignatures(container: HTMLElement) {
           const hasDotPattern = /[.…_]{3,}/.test(text);
           const STRICT_SIGNATURE_KEYWORDS = [
             "deponent", "advocate", "counsel", "signature", "sign", "thumb", "witness",
-            "वर", "वधु", "शपथकर्ता", "आवेदक", "अनावेदक", "अधिवक्ता", "हस्ताक्षर", "हस्ता.", "साक्षी"
+            "वर", "वधु", "शपथकर्ता", "आवेदक", "अनावेदक", "अधिवक्ता", "हस्ताक्षर", "हस्ता.", "साक्षी",
+            "विपक्षी", "अपीलार्थी", "प्रतिअपीलार्थी", "विनीत"
           ];
           const textLower = text.toLowerCase();
           const hasSigKeyword = STRICT_SIGNATURE_KEYWORDS.some(kw => textLower.includes(kw));
@@ -507,18 +526,30 @@ function alignSignatures(container: HTMLElement) {
             rangeBeforeTabs.setEndBefore(tabStops[0]);
           }
           const textBeforeFirstTab = (rangeBeforeTabs.cloneContents().textContent || "").replace(/\u200B/g, "").trim();
+          
+          // Gate out list items like "1.<tab>यह कि..." or "(ग)<tab>यह कि..."
+          const rangeAfterTabs = document.createRange();
+          rangeAfterTabs.setStartAfter(lastTab);
+          rangeAfterTabs.setEndAfter(p.lastChild!);
+          const textAfterTabs = (rangeAfterTabs.cloneContents().textContent || "").replace(/\u200B/g, "").trim();
+          
+          const isListItem = tabStops.length === 1 && /^[([]?[0-9a-zA-Z\u0900-\u097F]{1,4}[)\].]?$/.test(textBeforeFirstTab) && textAfterTabs.length > 15;
+          if (isListItem) {
+            return;
+          }
+
+          // Gate out regular body sentences that start with a tab indent (first line indent)
+          const nonDotChars = text.replace(/[.…_\s]/g, "").length;
           const isLeadingTabsOnly = (textBeforeFirstTab.length <= 3 && !/[a-zA-Z\u0900-\u097F]{2,}/.test(textBeforeFirstTab));
+          if (isLeadingTabsOnly && nonDotChars > 35) {
+            return;
+          }
 
           if (!isLeadingTabsOnly) {
             // Split line ("दिनांक .... [tabs] हस्ताक्षर..."): check if what follows last tab is a form header
-            // Get all nodes after the last tab stop
-            const rangeAfterTab = document.createRange();
-            rangeAfterTab.setStartAfter(lastTab);
-            rangeAfterTab.setEndAfter(p.lastChild!);
-            const contentAfterTab = rangeAfterTab.cloneContents();
-            const textAfterTab = (contentAfterTab.textContent || "").replace(/\u200B/g, "").trim();
+            const contentAfterTab = rangeAfterTabs.cloneContents();
 
-            const isPureDotUnderline = /^[.…_\s\u00A0]{3,}$/.test(textAfterTab);
+            const isPureDotUnderline = /^[.…_\s\u00A0]{3,}$/.test(textAfterTabs);
             const isDesignationBlock = (() => {
               const walk = (node: Node): string => {
                 const children = Array.from(node.childNodes);
@@ -563,6 +594,7 @@ function alignSignatures(container: HTMLElement) {
           const rightWrapper = document.createElement("span");
           rightWrapper.style.display = "inline-block";
           rightWrapper.style.flexShrink = "0";
+          rightWrapper.style.maxWidth = "100%";
           while (p.firstChild) {
             rightWrapper.appendChild(p.firstChild);
           }
@@ -578,11 +610,14 @@ function alignSignatures(container: HTMLElement) {
             const leftWrapper = document.createElement("span");
             leftWrapper.style.display = "inline-block";
             leftWrapper.style.flexShrink = "0";
+            leftWrapper.style.maxWidth = "100%";
             leftWrapper.appendChild(leftContent);
 
             p.appendChild(leftWrapper);
             p.appendChild(rightWrapper);
             p.style.display = "flex";
+            p.style.flexWrap = "wrap";
+            p.style.rowGap = "4px";
             p.style.justifyContent = "space-between";
             p.style.alignItems = "baseline";
           }
