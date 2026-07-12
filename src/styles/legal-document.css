@@ -22,7 +22,14 @@
   display: none;
 }
 
-
+/* Tab-stop spans must remain inline and preserve their computed word-spacing.
+   The width of each tab is encoded by docx-preview as an inline word-spacing value.
+   We must NOT override it with our global word-spacing: normal reset. */
+.docx-tab-stop {
+  display: inline !important;
+  white-space: pre !important;
+  /* word-spacing is set per-tab via inline style by docx-preview — do NOT reset */
+}
 
 /* Allow editing and caret placement across the entire page */
 .docx-wrapper > section.docx article,
@@ -85,7 +92,7 @@
 .legal-doc-container {
   font-size: 12pt;
   color: #111;
-  word-wrap: break-word !important;
+  word-wrap: normal !important;
   /* Dynamic line spacing */
   line-height: var(--document-line-spacing, inherit);
 }
@@ -97,6 +104,9 @@
   /* Minimal gap between paragraphs */
   margin-bottom: 6px !important; /* Slightly increased margin-bottom for better paragraph separation with line spacing */
   line-height: var(--document-line-spacing, inherit);
+  /* Reset letter-spacing to prevent browser from incorrectly spreading Devanagari glyphs */
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
 }
 
 /* If a custom line spacing is selected, override paragraph line heights */
@@ -129,6 +139,11 @@
 .legal-doc p.align-justify,
 .legal-doc-container p.align-justify {
   text-align: justify !important;
+  /* inter-word prevents browsers from spreading Devanagari/Hindi characters
+     apart when justifying. Only word-boundary spaces are stretched. */
+  text-justify: inter-word !important;
+  /* Last line of a justified paragraph should be left-aligned, not stretched */
+  text-align-last: left !important;
 }
 
 /* Headings */
@@ -172,7 +187,7 @@
 .legal-doc th,
 .legal-doc-container td,
 .legal-doc-container th {
-  padding: 4px 6px !important;
+  padding: 4px 6px;
   border: 1px solid #1e293b !important;
 }
 
@@ -186,8 +201,8 @@
   outline: none !important;
   cursor: text;
   white-space: normal;
-  word-break: break-word !important;
-  overflow-wrap: break-word !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
   font: inherit !important;
   font-size: inherit !important;
   font-family: inherit !important;

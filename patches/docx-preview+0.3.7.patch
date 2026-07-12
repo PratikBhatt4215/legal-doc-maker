@@ -1,0 +1,13 @@
+diff --git a/node_modules/docx-preview/dist/docx-preview.mjs b/node_modules/docx-preview/dist/docx-preview.mjs
+index 0ab9123..a5c614a 100644
+--- a/node_modules/docx-preview/dist/docx-preview.mjs
++++ b/node_modules/docx-preview/dist/docx-preview.mjs
+@@ -2791,7 +2791,7 @@ function updateTabStop(elem, tabs, defaultTabSize, pixelToPoint = 72 / 96) {
+         }
+     }
+     const marginLeft = parseFloat(pcs.marginLeft);
+-    const pOffset = pbb.left + marginLeft;
++    const pOffset = pbb.left - marginLeft;
+     const left = (ebb.left - pOffset) * pixelToPoint;
+     const tab = tabStops.find(t => t.style != "clear" && t.pos > left);
+     if (tab == null)

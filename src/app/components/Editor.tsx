@@ -23,6 +23,7 @@ interface EditorProps {
 
 const A4_W = 794;
 
+
 function wireEditableField(span: HTMLElement) {
   if ((span as any)._wired) return;
   (span as any)._wired = true;
@@ -118,7 +119,9 @@ function mergeAdjacentDotTextNodes(container: HTMLElement): void {
 
     if (currentIsDot && prevIsDot) {
       const hasActualDots = /[.…_]/.test(currentText) || /[.…_]/.test(prevText);
-      if (hasActualDots) {
+      // Never merge text nodes inside tab-stop spans
+      const inTabStop = current.parentElement?.classList.contains("docx-tab-stop") || prev.parentElement?.classList.contains("docx-tab-stop");
+      if (hasActualDots && !inTabStop) {
         const p1 = current.parentElement?.closest("p, div, td, li, article");
         const p2 = prev.parentElement?.closest("p, div, td, li, article");
         if (p1 && p1 === p2) {
@@ -222,6 +225,9 @@ function mergeAdjacentPlaceholderSpans(container: HTMLElement): void {
       if (!current.parentNode || !next.parentNode) continue;
       if (current.parentNode !== next.parentNode) continue; // direct siblings
 
+      // NEVER merge tab-stop spans — they are positioned by the docx-preview tab engine
+      if (current.classList.contains("docx-tab-stop") || next.classList.contains("docx-tab-stop")) continue;
+
       const t1 = current.textContent || "";
       const t2 = next.textContent || "";
       
@@ -246,6 +252,8 @@ function injectAndWire(container: HTMLElement): void {
   container.querySelectorAll("span").forEach(span => {
 
     if (span.classList.contains("legal-editable-field")) return;
+    // Never convert tab-stop spans to editable fields
+    if (span.classList.contains("docx-tab-stop")) return;
 
     const style = span.getAttribute("style") || "";
     const hasDottedUnderline = /text-decoration|border-bottom/i.test(style) && /dot|dash|underline/i.test(style);
@@ -284,12 +292,16 @@ function injectAndWire(container: HTMLElement): void {
   // Normalize the container first to merge any adjacent text nodes.
   container.normalize();
 
-  const dotPattern = /((?:\.[ \u00A0]*){3,}|(?:\u2026[ \u00A0]*){3,}|(?:_[ \u00A0]*){3,})/g;
-  const testPattern = /((?:\.[ \u00A0]*){3,}|(?:\u2026[ \u00A0]*){3,}|(?:_[ \u00A0]*){3,})/; // stateless non-global pattern to prevent lastIndex bug!
+  const dotPattern = /((?:\.[ \u00A0]*){2,}\.|(?:\u2026[ \u00A0]*){2,}\u2026|(?:_[ \u00A0]*){2,}_)/g;
+  const testPattern = /((?:\.[ \u00A0]*){2,}\.|(?:\u2026[ \u00A0]*){2,}\u2026|(?:_[ \u00A0]*){2,}_)/; // stateless non-global pattern to prevent lastIndex bug!
 
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       if (node.parentElement?.closest('.legal-editable-field')) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      // Never touch text inside tab-stop spans
+      if (node.parentElement?.closest('.docx-tab-stop')) {
         return NodeFilter.FILTER_REJECT;
       }
       return testPattern.test(node.textContent || "")
@@ -443,6 +455,158 @@ function schedulePagination(container: HTMLElement) {
   }, 300);
 }
 
+function alignSignatures(container: HTMLElement) {
+  try {
+    const paragraphs = container.querySelectorAll("p");
+    paragraphs.forEach(p => {
+      // If the paragraph contains a <br> element, it is a multi-line paragraph (like verification lines).
+      // Converting it to flex would flatten the line breaks and break the layout, so we skip it.
+      if (p.querySelector("br")) {
+        return;
+      }
+
+      const tabStops = Array.from(p.querySelectorAll(".docx-tab-stop")) as HTMLElement[];
+      if (tabStops.length > 0) {
+        let totalTabWidthPt = 0;
+        tabStops.forEach(tab => {
+          if (tab.style.wordSpacing) {
+            const ws = parseFloat(tab.style.wordSpacing);
+            if (!isNaN(ws)) {
+              totalTabWidthPt += ws;
+            }
+          }
+        });
+
+        const text = (p.textContent || "").replace(/\u200B/g, "").trim();
+        
+        // Dynamic check: short paragraphs (< 110 chars) with either multiple tabs or significant tab width (> 80pt)
+        if ((totalTabWidthPt > 80 || tabStops.length >= 2) && text.length < 110) {
+          const lastTab = tabStops[tabStops.length - 1];
+
+          // CRITICAL GATE: Only proceed if the paragraph contains at least one editable field,
+          // dot/underscore pattern, or strict signature keywords.
+          // Pure text headings ("1. प्रथम पक्ष:") must NEVER be flex-aligned.
+          const allFieldsInPara = Array.from(p.querySelectorAll(".legal-editable-field")) as HTMLElement[];
+          const hasDotPattern = /[.…_]{3,}/.test(text);
+          const STRICT_SIGNATURE_KEYWORDS = [
+            "deponent", "advocate", "counsel", "signature", "sign", "thumb", "witness",
+            "वर", "वधु", "शपथकर्ता", "आवेदक", "अनावेदक", "अधिवक्ता", "हस्ताक्षर", "हस्ता.", "साक्षी"
+          ];
+          const textLower = text.toLowerCase();
+          const hasSigKeyword = STRICT_SIGNATURE_KEYWORDS.some(kw => textLower.includes(kw));
+
+          if (allFieldsInPara.length === 0 && !hasDotPattern && !hasSigKeyword) {
+            return;
+          }
+
+          // Check if all tabs are LEADING tabs (before any text/fields).
+          // E.g., "[7 tabs] विक्रेता के हस्ताक्षर: ___" or "[tabs] ...अनुबंधकर्ता"
+          const rangeBeforeTabs = document.createRange();
+          if (p.firstChild) {
+            rangeBeforeTabs.setStartBefore(p.firstChild);
+            rangeBeforeTabs.setEndBefore(tabStops[0]);
+          }
+          const textBeforeFirstTab = (rangeBeforeTabs.cloneContents().textContent || "").replace(/\u200B/g, "").trim();
+          const isLeadingTabsOnly = (textBeforeFirstTab.length <= 3 && !/[a-zA-Z\u0900-\u097F]{2,}/.test(textBeforeFirstTab));
+
+          if (!isLeadingTabsOnly) {
+            // Split line ("दिनांक .... [tabs] हस्ताक्षर..."): check if what follows last tab is a form header
+            // Get all nodes after the last tab stop
+            const rangeAfterTab = document.createRange();
+            rangeAfterTab.setStartAfter(lastTab);
+            rangeAfterTab.setEndAfter(p.lastChild!);
+            const contentAfterTab = rangeAfterTab.cloneContents();
+            const textAfterTab = (contentAfterTab.textContent || "").replace(/\u200B/g, "").trim();
+
+            const isPureDotUnderline = /^[.…_\s\u00A0]{3,}$/.test(textAfterTab);
+            const isDesignationBlock = (() => {
+              const walk = (node: Node): string => {
+                const children = Array.from(node.childNodes);
+                for (let i = children.length - 1; i >= 0; i--) {
+                  const child = children[i];
+                  if (child.nodeType === Node.TEXT_NODE) {
+                    const t = (child.textContent || "").replace(/\u200B/g, "").trim();
+                    if (t.length > 0) return "text";
+                  } else if (child.nodeType === Node.ELEMENT_NODE) {
+                    const el = child as Element;
+                    if (el.classList.contains("legal-editable-field")) return "field";
+                    if (el.classList.contains("docx-tab-stop")) continue;
+                    const inner = walk(child);
+                    if (inner) return inner;
+                  }
+                }
+                return "";
+              };
+              return walk(contentAfterTab) === "text";
+            })();
+
+            if (!isPureDotUnderline && !isDesignationBlock) {
+              return;
+            }
+          }
+
+          // Hide all tab stops in this paragraph
+          tabStops.forEach(tab => {
+            tab.style.display = "none";
+          });
+
+          // Extract content before vs after `lastTab`
+          const range = document.createRange();
+          if (p.firstChild) {
+            range.setStartBefore(p.firstChild);
+            range.setEndBefore(lastTab);
+          }
+          const leftContent = range.extractContents();
+          const leftText = (leftContent.textContent || "").replace(/\u200B/g, "").trim();
+
+          // Use display: inline-block for rightWrapper so child text runs never overlap or compress
+          const rightWrapper = document.createElement("span");
+          rightWrapper.style.display = "inline-block";
+          rightWrapper.style.flexShrink = "0";
+          while (p.firstChild) {
+            rightWrapper.appendChild(p.firstChild);
+          }
+
+          if (leftText.length <= 3 && !/[a-zA-Z\u0900-\u097F]{2,}/.test(leftText)) {
+            // Leading tabs right-alignment block ("विक्रेता के हस्ताक्षर: ___" or "...अनुबंधकर्ता")
+            p.appendChild(rightWrapper);
+            p.style.display = "flex";
+            p.style.justifyContent = "flex-end";
+            p.style.alignItems = "baseline";
+          } else {
+            // Left/Right split block ("दिनांक .... [tabs] हस्ताक्षर...")
+            const leftWrapper = document.createElement("span");
+            leftWrapper.style.display = "inline-block";
+            leftWrapper.style.flexShrink = "0";
+            leftWrapper.appendChild(leftContent);
+
+            p.appendChild(leftWrapper);
+            p.appendChild(rightWrapper);
+            p.style.display = "flex";
+            p.style.justifyContent = "space-between";
+            p.style.alignItems = "baseline";
+          }
+        }
+      }
+    });
+
+    // Normalize large tab stops inside normal (non-flex) paragraphs
+    // so numbered section headings (like '1.<tab>प्रथम पक्ष') have standard 0.5 inch (36pt) indent
+    // instead of massive gaps (> 48pt) across the page.
+    const allTabSpans = container.querySelectorAll(".docx-tab-stop") as NodeListOf<HTMLElement>;
+    allTabSpans.forEach(span => {
+      if (span.style.wordSpacing) {
+        const ws = parseFloat(span.style.wordSpacing);
+        if (!isNaN(ws) && ws > 48 && span.parentElement && span.parentElement.style.display !== "flex") {
+          span.style.wordSpacing = "36pt";
+        }
+      }
+    });
+  } catch (err) {
+    console.error("Error in alignSignatures:", err);
+  }
+}
+
 function breakPagesDynamically(container: HTMLElement) {
   // Remove all previously-split sections first so we re-paginate from scratch
   // (keeps only the first section per original docx page wrapper)
@@ -467,7 +631,17 @@ function breakPagesDynamically(container: HTMLElement) {
       }
       sec.remove();
     } else {
-      originalSections.push(sec);
+      // Check if this original section has any actual content.
+      // If it is completely empty, remove it to prevent blank pages!
+      const article = sec.querySelector("article");
+      const children = article ? Array.from(article.children) as HTMLElement[] : [];
+      const hasContent = children.some(child => !isElementEmpty(child));
+
+      if (!hasContent && originalSections.length > 0) {
+        sec.remove();
+      } else {
+        originalSections.push(sec);
+      }
     }
   }
 
@@ -522,13 +696,31 @@ function hasPageBreak(el: HTMLElement): boolean {
   return false;
 }
 
+function isElementEmpty(el: HTMLElement): boolean {
+  const text = el.textContent || "";
+  if (text.trim().length > 0) return false;
+  if (el.querySelector("input, textarea, table, img, iframe")) return false;
+  if (hasPageBreak(el)) return false;
+  return true;
+}
+
+function getOffsetTopRelativeToContainer(el: HTMLElement, container: HTMLElement): number {
+  let top = 0;
+  let curr: HTMLElement | null = el;
+  while (curr && curr !== container && container.contains(curr)) {
+    top += curr.offsetTop || 0;
+    curr = curr.offsetParent as HTMLElement;
+  }
+  return top;
+}
+
 function paginateSection(section: HTMLElement) {
   const article = section.querySelector("article");
   if (!article) return;
 
-  // Use offsetTop of article relative to the section for layout-accurate (unscaled) measurements
-  const articleOffsetTop = (article as HTMLElement).offsetTop || 0;
-  const maxBottom = articleOffsetTop + A4_CONTENT_HEIGHT_PX;
+  const docxContainer = document.getElementById("content-ref") || section.parentElement || section;
+  const articleTop = getOffsetTopRelativeToContainer(article, docxContainer);
+  const maxBottom = A4_CONTENT_HEIGHT_PX;
 
   const children = Array.from(article.children) as HTMLElement[];
   let splitIndex = -1;
@@ -538,13 +730,14 @@ function paginateSection(section: HTMLElement) {
 
   for (let j = 0; j < children.length; j++) {
     const child = children[j];
-    // Use offsetTop + offsetHeight (layout-relative, unaffected by CSS transform)
-    const childBottom = child.offsetTop + child.offsetHeight;
-
     if (child.offsetHeight === 0) continue;
 
-    // Detect manual page breaks (only if it is not the very first element on the page)
-    const isManualBreak = j > 0 && hasPageBreak(child);
+    const childTop = getOffsetTopRelativeToContainer(child, docxContainer);
+    const relativeChildTop = childTop - articleTop;
+    const childBottom = relativeChildTop + child.offsetHeight;
+
+    // Detect manual page breaks (only if we have already kept some content on this page)
+    const isManualBreak = hasKeptSomething && hasPageBreak(child);
 
     if (isManualBreak || childBottom > maxBottom) {
       if (!hasKeptSomething && !isManualBreak) {
@@ -552,15 +745,30 @@ function paginateSection(section: HTMLElement) {
         continue;
       }
 
+      // Check if there is any actual content to split.
+      // If all remaining elements are empty/whitespace, don't split!
+      let hasContentToSplit = false;
+      for (let k = j; k < children.length; k++) {
+        if (!isElementEmpty(children[k])) {
+          hasContentToSplit = true;
+          break;
+        }
+      }
+
+      if (!hasContentToSplit) {
+        break;
+      }
+
       if (child.tagName === "TABLE") {
         const table = child as HTMLTableElement;
         const rows = Array.from(table.querySelectorAll("tr")) as HTMLTableRowElement[];
-        const tableOffsetTop = table.offsetTop;
+        const tableTop = getOffsetTopRelativeToContainer(table, docxContainer);
+        const relativeTableTop = tableTop - articleTop;
         let keptRow = false;
 
         for (let r = 0; r < rows.length; r++) {
           const row = rows[r];
-          const rowBottom = tableOffsetTop + row.offsetTop + row.offsetHeight;
+          const rowBottom = relativeTableTop + row.offsetTop + row.offsetHeight;
           if (rowBottom > maxBottom) {
             if (!keptRow) {
               keptRow = true;
@@ -1807,6 +2015,8 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
           inWrapper: true, ignoreWidth: false, ignoreHeight: false,
           ignoreFonts: false, breakPages: true, useBase64URL: true,
           renderHeaders: false, renderFooters: false,
+          experimental: true,
+          ignoreLastRenderedPageBreak: false,
           className: "docx",
         })
       .then(() => {
@@ -1815,8 +2025,6 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
         const doInject = () => {
           if (docxRef.current) {
             injectAndWire(docxRef.current);
-            applyTransform(0, 0, 1);
-            breakPagesDynamically(docxRef.current);
 
             // Read the actual computed margins of the natively rendered section
             const firstSection = docxRef.current.querySelector(".docx-wrapper > section.docx, section.docx") as HTMLElement;
@@ -1834,15 +2042,46 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
             const pc = docxRef.current.querySelectorAll(".docx-wrapper > section.docx, section.docx").length || 1;
             setPageCount(pc);
 
-            // Snapshot for Reset
-            if (!hasSnapshottedRef.current) {
-              originalHtmlRef.current = docxRef.current.innerHTML;
-              hasSnapshottedRef.current = true;
-            }
-
             setupEditorBehaviors();
-            saveToUndoStack();
-            setIsLoading(false);
+
+            // docx-preview calculates tab widths via a 500ms setTimeout.
+            // We wait 700ms here to ensure tab layout is complete on the UNSCALED document,
+            // THEN we slightly adjust exact-boundary tabs to prevent unwanted HTML wrapping,
+            // align signatures to the right margin, scale the document, take the snapshot, and finish loading.
+            setTimeout(() => {
+              if (docxRef.current) {
+                // Fix sub-pixel boundary wrapping on tabs (which causes words to break onto next line)
+                const tabSpans = docxRef.current.querySelectorAll(".docx-tab-stop") as NodeListOf<HTMLElement>;
+                tabSpans.forEach(span => {
+                  if (span.style.wordSpacing) {
+                    const ws = parseFloat(span.style.wordSpacing);
+                    if (!isNaN(ws) && ws > 4) {
+                      span.style.wordSpacing = `${ws - 4}pt`;
+                    }
+                  }
+                });
+
+                alignSignatures(docxRef.current);
+
+                // Page breaking must happen while the document is unscaled (scale = 1)
+                // so the browser reports correct A4 layout offsets and heights!
+                applyTransform(0, 0, 1);
+                breakPagesDynamically(docxRef.current);
+
+                // Apply fit-to-width scaling only after pagination is complete
+                const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
+                const x = (window.innerWidth - A4_W * scale) / 2;
+                applyTransform(x, 0, scale);
+
+                // Snapshot for Reset
+                if (!hasSnapshottedRef.current) {
+                  originalHtmlRef.current = docxRef.current.innerHTML;
+                  hasSnapshottedRef.current = true;
+                }
+                saveToUndoStack();
+                setIsLoading(false);
+              }
+            }, 700);
           }
         };
 
@@ -1874,6 +2113,8 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
           inWrapper: true, ignoreWidth: false, ignoreHeight: false,
           ignoreFonts: false, breakPages: true, useBase64URL: true,
           renderHeaders: false, renderFooters: false,
+          experimental: true,
+          ignoreLastRenderedPageBreak: false,
           className: "docx",
         }))
       .then(() => {
@@ -1911,7 +2152,6 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
           const doInject = () => {
             if (docxRef.current) {
               injectAndWire(docxRef.current);
-              breakPagesDynamically(docxRef.current);
 
               // Read the actual computed margins of the natively rendered section
               const firstSection = docxRef.current.querySelector(".docx-wrapper > section.docx, section.docx") as HTMLElement;
@@ -1929,15 +2169,46 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
               const pc = docxRef.current.querySelectorAll(".docx-wrapper > section.docx, section.docx").length || 1;
               setPageCount(pc);
 
-              // Snapshot for Reset
-              if (!hasSnapshottedRef.current) {
-                originalHtmlRef.current = docxRef.current.innerHTML;
-                hasSnapshottedRef.current = true;
-              }
-
               setupEditorBehaviors();
-              saveToUndoStack();
-              setIsLoading(false);
+
+              // docx-preview calculates tab widths via a 500ms setTimeout.
+              // We wait 700ms here to ensure tab layout is complete on the UNSCALED document,
+              // THEN we slightly adjust exact-boundary tabs to prevent unwanted HTML wrapping,
+              // align signatures to the right margin, scale the document, take the snapshot, and finish loading.
+              setTimeout(() => {
+                if (docxRef.current) {
+                  // Fix sub-pixel boundary wrapping on tabs (which causes words to break onto next line)
+                  const tabSpans = docxRef.current.querySelectorAll(".docx-tab-stop") as NodeListOf<HTMLElement>;
+                  tabSpans.forEach(span => {
+                    if (span.style.wordSpacing) {
+                      const ws = parseFloat(span.style.wordSpacing);
+                      if (!isNaN(ws) && ws > 4) {
+                        span.style.wordSpacing = `${ws - 4}pt`;
+                      }
+                    }
+                  });
+
+                  alignSignatures(docxRef.current);
+
+                  // Page breaking must happen while the document is unscaled (scale = 1)
+                  // so the browser reports correct A4 layout offsets and heights!
+                  applyTransform(0, 0, 1);
+                  breakPagesDynamically(docxRef.current);
+
+                  // Apply fit-to-width scaling only after pagination is complete
+                  const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
+                  const x = (window.innerWidth - A4_W * scale) / 2;
+                  applyTransform(x, 0, scale);
+
+                  // Snapshot for Reset
+                  if (!hasSnapshottedRef.current) {
+                    originalHtmlRef.current = docxRef.current.innerHTML;
+                    hasSnapshottedRef.current = true;
+                  }
+                  saveToUndoStack();
+                  setIsLoading(false);
+                }
+              }, 700);
             }
           };
 
