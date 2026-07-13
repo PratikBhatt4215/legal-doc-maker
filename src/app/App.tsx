@@ -85,7 +85,7 @@ export default function App() {
   const [selectedCourt, setSelectedCourt] = useState<string>("");
   const [selectedForm, setSelectedForm] = useState<string>("");
   const [showPayment, setShowPayment] = useState(false);
-  const [paymentSuccessCallback, setPaymentSuccessCallback] = useState<(() => void) | null>(null);
+  const [paymentSuccessCallback, setPaymentSuccessCallback] = useState<((paymentId?: string) => void) | null>(null);
   const [userData, setUserData] = useState<any>(null);
   const [userId, setUserId] = useState<string>("");
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -259,6 +259,14 @@ export default function App() {
     saveNavState("editor", "", draft.formId);
   };
 
+  const handleOpenSavedPDF = (record: any) => {
+    setSelectedForm(record.formId);
+    setActiveDraftId(undefined);
+    setDraftInitialContent(record.content);
+    setCurrentScreen("editor");
+    saveNavState("editor", "", record.formId);
+  };
+
   const base64ToBlob = (base64: string, mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document") => {
     const byteCharacters = atob(base64);
     const byteNumbers = new Array(byteCharacters.length);
@@ -291,11 +299,11 @@ export default function App() {
     saveNavState("dashboard", "", "");
   };
 
-  const handleExportPDF = (onSuccess: () => void) => {
+  const handleExportPDF = (onSuccess: (paymentId?: string) => void) => {
     const { active } = storage.loadSubscription();
     if (active) {
       toast.success("Premium Active! Generating PDF...");
-      onSuccess();
+      onSuccess("PREMIUM_SUB");
       return;
     }
     setPaymentSuccessCallback(() => onSuccess);
@@ -306,7 +314,7 @@ export default function App() {
     setShowPayment(false);
     toast.success("Payment successful! Generating PDF...");
     if (paymentSuccessCallback) {
-      paymentSuccessCallback();
+      paymentSuccessCallback(paymentId);
       setPaymentSuccessCallback(null);
     }
   };
@@ -418,6 +426,7 @@ export default function App() {
       {currentScreen === "savedpdfs" && (
         <SavedPDFs
           onBack={goToDashboard}
+          onOpenSavedPDF={handleOpenSavedPDF}
         />
       )}
 

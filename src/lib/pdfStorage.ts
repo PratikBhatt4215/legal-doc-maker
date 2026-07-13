@@ -7,9 +7,12 @@ export interface PDFExportRecord {
   formId: string;
   templateName: string;
   exportedAt: string; // ISO string
-  amountPaid: string; // e.g., "₹99"
-  paymentId: string;  // e.g., "demo_pay_123456"
+  amountPaid: string; // e.g., "₹10"
+  paymentId: string;  // e.g., "TXN-89F3A12C"
   fileName: string;
+  content?: string;   // HTML content snapshot at export time
+  fileUrl?: string;   // Local device file path
+  status?: string;    // Real payment status e.g., "Success"
 }
 
 const EXPORTS_KEY = "legal_pdf_exports_v1";
@@ -33,7 +36,10 @@ export function savePDFExport(
   formId: string,
   templateName: string,
   amountPaid = "₹10",
-  paymentId?: string
+  paymentId?: string,
+  content?: string,
+  fileUrl?: string,
+  status = "Success"
 ): PDFExportRecord {
   const exports = loadAllExports();
   const now = new Date().toISOString();
@@ -44,8 +50,11 @@ export function savePDFExport(
     templateName,
     exportedAt: now,
     amountPaid,
-    paymentId: paymentId || `demo_pay_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
-    fileName: `${templateName.replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}.pdf`
+    paymentId: paymentId || `TXN-${Math.random().toString(36).substring(2, 11).toUpperCase()}`,
+    fileName: `${templateName.replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}.pdf`,
+    content,
+    fileUrl,
+    status
   };
   exports.unshift(record); // newest first
   saveAllExports(exports);

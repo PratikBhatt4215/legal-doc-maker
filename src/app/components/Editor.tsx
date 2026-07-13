@@ -2156,7 +2156,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
         if (!docxRef.current) return;
 
         if (initialContent) {
-          // Opened from Drafts screen — restore the saved draft content
+          // Opened from Drafts screen or Saved PDFs — restore the saved content
           docxRef.current.innerHTML = initialContent;
           setupEditorBehaviors();
 
@@ -2180,8 +2180,34 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
           }
           const pc = docxRef.current.querySelectorAll(".docx-wrapper > section.docx, section.docx").length || 1;
           setPageCount(pc);
-          saveToUndoStack();
-          setIsLoading(false);
+
+          setTimeout(() => {
+            if (docxRef.current) {
+              const tabSpans = docxRef.current.querySelectorAll(".docx-tab-stop") as NodeListOf<HTMLElement>;
+              tabSpans.forEach(span => {
+                if (span.style.wordSpacing) {
+                  const ws = parseFloat(span.style.wordSpacing);
+                  if (!isNaN(ws) && ws > 4) {
+                    span.style.wordSpacing = `${ws - 4}pt`;
+                  }
+                }
+              });
+
+              alignSignatures(docxRef.current);
+
+              // Page breaking must happen while the document is unscaled (scale = 1)
+              applyTransform(0, 0, 1);
+              breakPagesDynamically(docxRef.current);
+
+              // Apply fit-to-width scaling after pagination so document centers perfectly without blank page
+              const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
+              const x = (window.innerWidth - A4_W * scale) / 2;
+              applyTransform(x, 0, scale);
+
+              saveToUndoStack();
+              setIsLoading(false);
+            }
+          }, 200);
         } else {
           // Fresh template — inject editable fields then paginate
           const doInject = () => {
@@ -2471,7 +2497,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       }
     }
 
-    const performExport = async () => {
+    const performExport = async (paymentId?: string) => {
       toast.info(`Generating ${size.toUpperCase()} PDF…`);
       setExportingPDF(true); // Show loader spinner during generation
 
@@ -2482,7 +2508,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
           paperSize: size,
           pagesToExport,
           onSuccess: () => {
-            savePDFExport(formId, template?.name || "Legal Document", "₹10");
+            savePDFExport(formId, template?.name || "Legal Document", "₹10", paymentId, docxRef.current?.innerHTML);
             toast.success("PDF exported successfully!");
             setExportingPDF(false);
           },

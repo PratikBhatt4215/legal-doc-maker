@@ -56,7 +56,7 @@ export function Profile({ onBack, onLogout, onOpenAdmin, onOpenSubscription, isA
       hour: "2-digit", minute: "2-digit"
     }),
     amount: item.amountPaid,
-    status: "Success",
+    status: item.status || "Success",
     document: item.templateName
   }));
 

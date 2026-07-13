@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 interface SavedPDFsProps {
   onBack: () => void;
+  onOpenSavedPDF?: (record: PDFExportRecord) => void;
 }
 
 function formatDate(iso: string): string {
@@ -16,7 +17,7 @@ function formatDate(iso: string): string {
   });
 }
 
-export function SavedPDFs({ onBack }: SavedPDFsProps) {
+export function SavedPDFs({ onBack, onOpenSavedPDF }: SavedPDFsProps) {
   const [exports, setExports] = useState<PDFExportRecord[]>([]);
   const isHi = storage.loadLanguage() === "hi";
 
@@ -24,15 +25,24 @@ export function SavedPDFs({ onBack }: SavedPDFsProps) {
     setExports(getAllPDFExports());
   }, []);
 
-  const handleShare = async (record: PDFExportRecord) => {
+  const handleShare = async (record: PDFExportRecord, e: React.MouseEvent) => {
+    e.stopPropagation();
     try {
-      await Share.share({
-        title: record.templateName,
-        text: isHi 
-          ? `मेरा निर्यातित कानूनी दस्तावेज़ देखें: ${record.templateName}`
-          : `Check out my exported legal document: ${record.templateName}`,
-        dialogTitle: isHi ? "PDF दस्तावेज़ साझा करें" : "Share PDF Document",
-      });
+      if (record.fileUrl) {
+        await Share.share({
+          title: record.templateName,
+          url: record.fileUrl,
+          dialogTitle: isHi ? "PDF दस्तावेज़ साझा करें" : "Share PDF Document",
+        });
+      } else {
+        await Share.share({
+          title: record.templateName,
+          text: isHi 
+            ? `मेरा निर्यातित कानूनी दस्तावेज़ देखें: ${record.templateName}`
+            : `Check out my exported legal document: ${record.templateName}`,
+          dialogTitle: isHi ? "PDF दस्तावेज़ साझा करें" : "Share PDF Document",
+        });
+      }
     } catch (e) {
       toast.error(isHi ? "साझा करना समर्थित नहीं है या रद्द कर दिया गया है।" : "Sharing not supported or cancelled.");
     }
@@ -86,11 +96,19 @@ export function SavedPDFs({ onBack }: SavedPDFsProps) {
             {exports.map((item) => (
               <div
                 key={item.id}
+                onClick={() => {
+                  if (onOpenSavedPDF) {
+                    onOpenSavedPDF(item);
+                  } else {
+                    toast.info(isHi ? "दस्तावेज़ खोला जा रहा है..." : "Opening document...");
+                  }
+                }}
                 style={{
                   background: "white", borderRadius: 16,
                   boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
                   border: "1px solid #f1f5f9",
                   padding: "16px", display: "flex", alignItems: "center", gap: 12,
+                  cursor: "pointer", transition: "transform 0.1s"
                 }}
               >
                 <div style={{
@@ -109,13 +127,14 @@ export function SavedPDFs({ onBack }: SavedPDFsProps) {
                     <Calendar size={11} color="#94a3b8" />
                     <span style={{ fontSize: 11, color: "#94a3b8" }}>{formatDate(item.exportedAt)}</span>
                   </div>
-                  <div style={{ fontSize: 10, color: "#2563eb", fontWeight: 700, marginTop: 4 }}>
-                    {isHi ? "आईडी" : "ID"}: {item.paymentId} ({isHi ? "भुगतान किया" : "Paid"}: {item.amountPaid})
+                  <div style={{ fontSize: 10, color: "#16a34a", fontWeight: 700, marginTop: 4 }}>
+                    {item.status || "Success"} • {isHi ? "आईडी" : "ID"}: {item.paymentId} ({item.amountPaid})
                   </div>
                 </div>
 
                 <button
-                  onClick={() => handleShare(item)}
+                  onClick={(e) => handleShare(item, e)}
+                  title="Share Document"
                   style={{
                     background: "#f1f5f9", border: "none", borderRadius: 10,
                     padding: 8, color: "#475569", cursor: "pointer",
