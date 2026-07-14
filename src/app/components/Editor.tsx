@@ -753,7 +753,7 @@ function paginateSection(section: HTMLElement) {
   const article = section.querySelector("article");
   if (!article) return;
 
-  const docxContainer = document.getElementById("content-ref") || section.parentElement || section;
+  const docxContainer = document.getElementById("docx-print-target") || section.parentElement || section;
   const articleTop = getOffsetTopRelativeToContainer(article, docxContainer);
   const maxBottom = A4_CONTENT_HEIGHT_PX;
 
@@ -2037,6 +2037,66 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
     // re-trigger this effect and re-fetch the template from scratch,
     // causing repeated "Loading template…" flicker.
     if (hasRenderedRef.current) {
+      return cleanup;
+    }
+
+    // ── FAST PATH: If we have saved content (draft or saved PDF), skip docx.renderAsync ──────────
+    // Injecting initialContent directly avoids: (1) needing a valid template filePath,
+    // (2) a slow DOCX network fetch, (3) overwriting the saved HTML after render.
+    if (initialContent && !customFile) {
+      hasRenderedRef.current = true;
+      setIsLoading(true);
+
+      // Small delay to let the screen transition finish
+      setTimeout(() => {
+        if (!docxRef.current) { setIsLoading(false); return; }
+
+        // Inject the saved HTML snapshot
+        docxRef.current.innerHTML = initialContent;
+
+        // Snapshot for Reset
+        if (!hasSnapshottedRef.current) {
+          originalHtmlRef.current = initialContent;
+          hasSnapshottedRef.current = true;
+        }
+
+        // Re-read margins from the restored section
+        const firstSection = docxRef.current.querySelector(".docx-wrapper > section.docx, section.docx") as HTMLElement;
+        if (firstSection) {
+          const cs = window.getComputedStyle(firstSection);
+          const cl = parseFloat(cs.paddingLeft);
+          const cr = parseFloat(cs.paddingRight);
+          if (!isNaN(cl) && !isNaN(cr)) {
+            setLeftMargin(cl);
+            setRightMargin(cr);
+            originalMarginsRef.current = { left: cl, right: cr };
+          }
+        }
+        const pc = docxRef.current.querySelectorAll(".docx-wrapper > section.docx, section.docx").length || 1;
+        setPageCount(pc);
+
+        setupEditorBehaviors();
+
+        // Wait for fonts + layout, then paginate at scale=1, then fit to width
+        setTimeout(() => {
+          if (!docxRef.current) return;
+
+          alignSignatures(docxRef.current);
+
+          // Pagination MUST happen at scale=1 so offsetTop measurements are correct
+          applyTransform(0, 0, 1);
+          breakPagesDynamically(docxRef.current);
+
+          // After pagination, fit-to-width scale
+          const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
+          const x = (window.innerWidth - A4_W * scale) / 2;
+          applyTransform(x, 0, scale);
+
+          saveToUndoStack();
+          setIsLoading(false);
+        }, 400);
+      }, 300);
+
       return cleanup;
     }
 
