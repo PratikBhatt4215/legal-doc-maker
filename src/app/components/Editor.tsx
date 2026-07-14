@@ -2038,8 +2038,6 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
     undoStackRef.current = [];
     originalHtmlRef.current = null;
 
-    // Diagnostic Toast: show exactly what is being loaded to verify data presence
-    toast.info(`Load: Form=${formId}, Draft=${initialContent ? initialContent.length + " chars" : "none"}`, { duration: 4000 });
 
     // Clear the container so the old document doesn't flash before the new one loads
     if (docxRef.current) {
