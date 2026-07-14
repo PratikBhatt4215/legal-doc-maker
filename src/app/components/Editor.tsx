@@ -2032,12 +2032,17 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       container.removeEventListener("focusin", handleFocusIn);
     };
 
-    // ── GUARD: only fetch/render once per formId/customFile ──────────
-    // Without this guard, changing isLoading or pageCount state would
-    // re-trigger this effect and re-fetch the template from scratch,
-    // causing repeated "Loading template…" flicker.
-    if (hasRenderedRef.current) {
-      return cleanup;
+    // ── Reset render guard for every new source (formId / initialContent / customFile) ──
+    // This allows the editor to reload when navigating from one draft to another,
+    // or from a template to a draft with the same formId.
+    hasRenderedRef.current = false;
+    hasSnapshottedRef.current = false;
+    undoStackRef.current = [];
+    originalHtmlRef.current = null;
+
+    // Clear the container so the old document doesn't flash before the new one loads
+    if (docxRef.current) {
+      docxRef.current.innerHTML = "";
     }
 
     // ── FAST PATH: If we have saved content (draft or saved PDF), skip docx.renderAsync ──────────
@@ -2348,9 +2353,9 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
     }, 300); // end of setTimeout
 
     return cleanup;
-  // Only re-run when the actual template source changes, NOT when derived state changes
+  // Re-run whenever the document source changes: template ID, saved content, or custom file.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formId, customFile]);
+  }, [formId, initialContent, customFile]);
 
   const handlePreview = useCallback(() => {
     if (!docxRef.current) return;
