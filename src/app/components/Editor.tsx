@@ -2046,61 +2046,83 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
     }
 
     // ── FAST PATH: If we have saved content (draft or saved PDF), skip docx.renderAsync ──────────
-    // Injecting initialContent directly avoids: (1) needing a valid template filePath,
-    // (2) a slow DOCX network fetch, (3) overwriting the saved HTML after render.
-    if (initialContent && !customFile) {
+    // The saved HTML is ALREADY correctly paginated — we just need to inject it,
+    // wire event handlers, apply the transform, and show it. Re-paginating causes sections to be destroyed.
+    const hasValidContent = typeof initialContent === "string" && initialContent.trim().length > 100;
+    if (hasValidContent && !customFile) {
       hasRenderedRef.current = true;
       setIsLoading(true);
 
-      // Small delay to let the screen transition finish
+      // Small delay to let the screen transition finish and the container to be in the DOM
       setTimeout(() => {
-        if (!docxRef.current) { setIsLoading(false); return; }
+        try {
+          if (!docxRef.current) { setIsLoading(false); return; }
 
-        // Inject the saved HTML snapshot
-        docxRef.current.innerHTML = initialContent;
+          // Inject the saved HTML snapshot
+          docxRef.current.innerHTML = initialContent!;
 
-        // Snapshot for Reset
-        if (!hasSnapshottedRef.current) {
-          originalHtmlRef.current = initialContent;
-          hasSnapshottedRef.current = true;
-        }
+          // Verify that the injected HTML actually has document content
+          const hasArticle = !!docxRef.current.querySelector("article");
+          const hasSection = !!docxRef.current.querySelector("section.docx, .docx-wrapper");
 
-        // Re-read margins from the restored section
-        const firstSection = docxRef.current.querySelector(".docx-wrapper > section.docx, section.docx") as HTMLElement;
-        if (firstSection) {
-          const cs = window.getComputedStyle(firstSection);
-          const cl = parseFloat(cs.paddingLeft);
-          const cr = parseFloat(cs.paddingRight);
-          if (!isNaN(cl) && !isNaN(cr)) {
-            setLeftMargin(cl);
-            setRightMargin(cr);
-            originalMarginsRef.current = { left: cl, right: cr };
+          if (!hasArticle && !hasSection) {
+            // Content is not valid docx HTML — fall through to template loading below
+            docxRef.current.innerHTML = "";
+            hasRenderedRef.current = false;
+            // Kick off template fetch — set flag and re-trigger via state change
+            setIsLoading(false);
+            return;
           }
-        }
-        const pc = docxRef.current.querySelectorAll(".docx-wrapper > section.docx, section.docx").length || 1;
-        setPageCount(pc);
 
-        setupEditorBehaviors();
+          // Snapshot for Reset
+          if (!hasSnapshottedRef.current) {
+            originalHtmlRef.current = initialContent!;
+            hasSnapshottedRef.current = true;
+          }
 
-        // Wait for fonts + layout, then paginate at scale=1, then fit to width
-        setTimeout(() => {
-          if (!docxRef.current) return;
+          // Re-read margins from the restored section
+          const firstSection = docxRef.current.querySelector(".docx-wrapper > section.docx, section.docx") as HTMLElement;
+          if (firstSection) {
+            const cs = window.getComputedStyle(firstSection);
+            const cl = parseFloat(cs.paddingLeft);
+            const cr = parseFloat(cs.paddingRight);
+            if (!isNaN(cl) && !isNaN(cr)) {
+              setLeftMargin(cl);
+              setRightMargin(cr);
+              originalMarginsRef.current = { left: cl, right: cr };
+            }
+          }
+          const pc = docxRef.current.querySelectorAll(".docx-wrapper > section.docx, section.docx").length || 1;
+          setPageCount(pc);
 
-          alignSignatures(docxRef.current);
+          // Make articles editable and wire up fields
+          docxRef.current.querySelectorAll("article").forEach(article => {
+            const el = article as HTMLElement;
+            el.contentEditable = "true";
+            el.spellcheck = true;
+            el.style.cursor = "text";
+            el.style.outline = "none";
+            el.style.caretColor = "#111";
+            el.style.userSelect = "text";
+            (el.style as any).webkitUserSelect = "text";
+          });
+          mergeAdjacentFields(docxRef.current);
+          docxRef.current.querySelectorAll(".legal-editable-field").forEach(field => {
+            wireEditableField(field as HTMLElement);
+          });
 
-          // Pagination MUST happen at scale=1 so offsetTop measurements are correct
-          applyTransform(0, 0, 1);
-          breakPagesDynamically(docxRef.current);
-
-          // After pagination, fit-to-width scale
+          // Apply fit-to-width scaling
           const scale = Math.min(1, (window.innerWidth - 8) / A4_W);
           const x = (window.innerWidth - A4_W * scale) / 2;
           applyTransform(x, 0, scale);
 
           saveToUndoStack();
           setIsLoading(false);
-        }, 400);
-      }, 300);
+        } catch (err) {
+          console.error("[Editor] Failed to restore draft content:", err);
+          setIsLoading(false);
+        }
+      }, 350);
 
       return cleanup;
     }
@@ -3308,8 +3330,11 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
           <button
             onClick={() => {
               if (!docxRef.current) return;
+              if (isLoading) { toast.error("Please wait for the document to finish loading."); return; }
+              const html = docxRef.current.innerHTML;
+              if (!html || html.trim().length < 50) { toast.error("Document is empty, cannot save draft."); return; }
               const templateName = displayName;
-              const saved = saveDraft(formId, templateName, docxRef.current.innerHTML, currentDraftId);
+              const saved = saveDraft(formId, templateName, html, currentDraftId);
               setCurrentDraftId(saved.id);
               toast.success("Draft saved!", { duration: 2000 });
             }}
