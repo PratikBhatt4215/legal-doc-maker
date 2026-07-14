@@ -2033,12 +2033,13 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
     };
 
     // ── Reset render guard for every new source (formId / initialContent / customFile) ──
-    // This allows the editor to reload when navigating from one draft to another,
-    // or from a template to a draft with the same formId.
     hasRenderedRef.current = false;
     hasSnapshottedRef.current = false;
     undoStackRef.current = [];
     originalHtmlRef.current = null;
+
+    // Diagnostic Toast: show exactly what is being loaded to verify data presence
+    toast.info(`Load: Form=${formId}, Draft=${initialContent ? initialContent.length + " chars" : "none"}`, { duration: 4000 });
 
     // Clear the container so the old document doesn't flash before the new one loads
     if (docxRef.current) {
@@ -2046,14 +2047,11 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
     }
 
     // ── FAST PATH: If we have saved content (draft or saved PDF), skip docx.renderAsync ──────────
-    // The saved HTML is ALREADY correctly paginated — we just need to inject it,
-    // wire event handlers, apply the transform, and show it. Re-paginating causes sections to be destroyed.
     const hasValidContent = typeof initialContent === "string" && initialContent.trim().length > 100;
     if (hasValidContent && !customFile) {
       hasRenderedRef.current = true;
       setIsLoading(true);
 
-      // Small delay to let the screen transition finish and the container to be in the DOM
       setTimeout(() => {
         try {
           if (!docxRef.current) { setIsLoading(false); return; }
@@ -2066,10 +2064,9 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
           const hasSection = !!docxRef.current.querySelector("section.docx, .docx-wrapper");
 
           if (!hasArticle && !hasSection) {
-            // Content is not valid docx HTML — fall through to template loading below
+            toast.error("Draft content is invalid/corrupt. Loading fresh template.");
             docxRef.current.innerHTML = "";
             hasRenderedRef.current = false;
-            // Kick off template fetch — set flag and re-trigger via state change
             setIsLoading(false);
             return;
           }
@@ -2080,18 +2077,23 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
             hasSnapshottedRef.current = true;
           }
 
-          // Re-read margins from the restored section
-          const firstSection = docxRef.current.querySelector(".docx-wrapper > section.docx, section.docx") as HTMLElement;
-          if (firstSection) {
-            const cs = window.getComputedStyle(firstSection);
-            const cl = parseFloat(cs.paddingLeft);
-            const cr = parseFloat(cs.paddingRight);
-            if (!isNaN(cl) && !isNaN(cr)) {
-              setLeftMargin(cl);
-              setRightMargin(cr);
-              originalMarginsRef.current = { left: cl, right: cr };
+          // Safe margin read
+          try {
+            const firstSection = docxRef.current.querySelector(".docx-wrapper > section.docx, section.docx") as HTMLElement;
+            if (firstSection) {
+              const cs = window.getComputedStyle(firstSection);
+              const cl = parseFloat(cs.paddingLeft);
+              const cr = parseFloat(cs.paddingRight);
+              if (!isNaN(cl) && !isNaN(cr)) {
+                setLeftMargin(cl);
+                setRightMargin(cr);
+                originalMarginsRef.current = { left: cl, right: cr };
+              }
             }
+          } catch (marginErr) {
+            console.warn("Failed to read margins, using defaults:", marginErr);
           }
+          
           const pc = docxRef.current.querySelectorAll(".docx-wrapper > section.docx, section.docx").length || 1;
           setPageCount(pc);
 
