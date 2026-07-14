@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { ArrowLeft, FileText, Share2, Calendar } from "lucide-react";
 import { getAllPDFExports, PDFExportRecord } from "../../lib/pdfStorage";
+import { storage } from "../../lib/storage";
 import { Share } from "@capacitor/share";
 import { toast } from "sonner";
 

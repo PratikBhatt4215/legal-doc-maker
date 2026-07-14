@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { FileText, Trash2, ChevronRight, ArrowLeft, Clock, FolderOpen } from "lucide-react";
 import { getAllDrafts, deleteDraft, Draft } from "../../lib/draftStorage";
+import { storage } from "../../lib/storage";
 
 interface DraftsScreenProps {
   onBack: () => void;
