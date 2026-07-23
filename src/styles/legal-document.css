@@ -16,6 +16,9 @@
 .placeholder-layer {
   color: #94a3b8 !important; /* Soft grey color for native placeholder dots */
   user-select: none;
+  font-size: inherit !important;
+  font-family: inherit !important;
+  font-weight: inherit !important;
 }
 
 .legal-editable-field.has-value .placeholder-layer {
@@ -70,6 +73,8 @@
   min-height: 1123px !important;
   /* Strict A4 Height */
   box-sizing: border-box !important;
+  padding-top: 56px !important;
+  padding-bottom: 56px !important;
   margin: 0 !important;
   background: #ffffff !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 0 1px rgba(0, 0, 0, 0.1) !important;
@@ -203,10 +208,6 @@
   white-space: normal;
   word-break: normal !important;
   overflow-wrap: normal !important;
-  font: inherit !important;
-  font-size: inherit !important;
-  font-family: inherit !important;
-  font-weight: inherit !important;
   line-height: inherit !important;
   color: inherit !important;
   background: transparent !important;
@@ -217,9 +218,7 @@
 }
 
 .legal-editable-field * {
-  font-size: inherit !important;
   font-family: inherit !important;
-  font-weight: inherit !important;
   line-height: inherit !important;
   color: inherit !important;
 }

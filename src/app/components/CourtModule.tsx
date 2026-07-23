@@ -86,6 +86,8 @@ interface CourtModuleProps {
   courtId: string;
   onBack: () => void;
   onSelectForm: (templateId: string) => void;
+  navPath: string[];
+  setNavPath: React.Dispatch<React.SetStateAction<string[]>>;
 }
 
 // ── Recursive Folder Node and View Rendering ──────────────────────────
@@ -199,7 +201,7 @@ function FolderView({
   );
 }
 
-export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps) {
+export function CourtModule({ courtId, onBack, onSelectForm, navPath, setNavPath }: CourtModuleProps) {
   const court = courts.find(c => c.id === courtId);
   const availableLangs = useMemo(() => getAvailableLanguages(courtId), [courtId]);
   const [language, setLanguage] = useState<Language>(() => {
@@ -208,9 +210,6 @@ export function CourtModule({ courtId, onBack, onSelectForm }: CourtModuleProps)
 
   const title = language === "hi" ? (court?.titleHi || court?.title || "Court") : (court?.title || "Court");
   const [searchQuery, setSearchQuery] = useState("");
-  
-  // Navigation path stack: e.g. ["Civil Cases", "for plaintiff"]
-  const [navPath, setNavPath] = useState<string[]>([]);
 
   // Switch language
   const handleLangSwitch = (lang: Language) => {

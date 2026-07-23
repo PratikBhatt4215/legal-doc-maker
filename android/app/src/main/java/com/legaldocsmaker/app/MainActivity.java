@@ -62,16 +62,35 @@ public class MainActivity extends BridgeActivity {
                             return true; // Handled (even if failed, we don't want WebView to load intent://)
                         }
 
-                        // 2. Handle direct UPI app custom schemes (e.g. upi://, phonepe://, paytm://, gpay://, bhim://, tez://)
+                        // 2. Handle direct UPI app custom schemes or generic upi intent (e.g. upi://)
                         if (url.startsWith("upi://") || url.startsWith("phonepe://") || url.startsWith("paytm://") || 
                             url.startsWith("gpay://") || url.startsWith("bhim://") || url.startsWith("tez://") ||
                             url.startsWith("paytmmp://")) {
                             try {
-                                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                                view.getContext().startActivity(intent);
-                                return true;
+                                Uri uri = Uri.parse(url);
+                                Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                                
+                                // Check if a specific target package was requested in the URL
+                                String targetPackage = uri.getQueryParameter("package");
+                                if (targetPackage != null && !targetPackage.isEmpty()) {
+                                    intent.setPackage(targetPackage);
+                                }
+                                
+                                try {
+                                    view.getContext().startActivity(intent);
+                                    return true;
+                                } catch (Exception launchEx) {
+                                    // If target package failed, try launching as a generic chooser intent
+                                    if (targetPackage != null) {
+                                        Intent genericIntent = new Intent(Intent.ACTION_VIEW, uri);
+                                        view.getContext().startActivity(genericIntent);
+                                        return true;
+                                    }
+                                    throw launchEx;
+                                }
                             } catch (Exception e) {
-                                android.widget.Toast.makeText(view.getContext(), "Selected UPI App is not installed on this device", android.widget.Toast.LENGTH_SHORT).show();
+                                e.printStackTrace();
+                                android.widget.Toast.makeText(view.getContext(), "No appropriate UPI App found on this device", android.widget.Toast.LENGTH_SHORT).show();
                                 return true; // Handled
                             }
                         }

@@ -40,10 +40,36 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
 
     try {
       if (isLogin) {
+        let emailToAuth = formData.email.trim();
+        
+        // If the user inputs a 10-digit mobile number, lookup their email in Firestore
+        if (/^\d{10}$/.test(emailToAuth)) {
+          if (db) {
+            try {
+              const { collection, query, where, getDocs } = await import('firebase/firestore');
+              const q = query(collection(db, 'users'), where('mobile', '==', emailToAuth));
+              const querySnapshot = await getDocs(q);
+              if (!querySnapshot.empty) {
+                const userDoc = querySnapshot.docs[0].data();
+                if (userDoc.email) {
+                  emailToAuth = userDoc.email;
+                }
+              } else {
+                emailToAuth = `${emailToAuth}@legaldocsmaker.app`;
+              }
+            } catch (fsErr) {
+              console.error("Firestore lookup failed:", fsErr);
+              emailToAuth = `${emailToAuth}@legaldocsmaker.app`;
+            }
+          } else {
+            emailToAuth = `${emailToAuth}@legaldocsmaker.app`;
+          }
+        }
+
         // Login with Firebase
         const userCredential = await signInWithEmailAndPassword(
           auth,
-          formData.email.trim(),
+          emailToAuth,
           formData.password
         );
 
@@ -207,8 +233,10 @@ export function LoginSignup({ onLogin }: LoginSignupProps) {
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
-              type="email"
-              placeholder={M.placeholderEmail}
+              type="text"
+              placeholder={isLogin 
+                ? (language === "hi" ? "ईमेल या 10 अंकों का मोबाइल नंबर" : "Email or 10-digit Mobile Number")
+                : M.placeholderEmail}
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#1e3a5f] focus:outline-none transition-colors"

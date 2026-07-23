@@ -263,7 +263,20 @@ function injectAndWire(container: HTMLElement): void {
       const text = (span.textContent || "").replace(/\u200B/g, "");
       // If the span contains only spaces, dots, or underscores, and is at least 3 characters long
       if (/^[.…_\s\u00A0]*$/.test(text) && text.length >= 3) {
-        span.className = "legal-editable-field is-empty";
+        // Read template-injected computed styles before wrapping
+        let size = "";
+        let weight = "";
+        let family = "";
+        let color = "";
+        try {
+          const computed = window.getComputedStyle(span);
+          size = computed.fontSize;
+          weight = computed.fontWeight;
+          family = computed.fontFamily;
+          color = computed.color;
+        } catch (e) {}
+
+        span.classList.add("legal-editable-field", "is-empty");
         span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         span.dataset.placeholder = text;
         span.textContent = text;
@@ -272,6 +285,12 @@ function injectAndWire(container: HTMLElement): void {
         // Strip the underline/border styles from this span and ALL wrapper ancestors
         span.style.textDecoration = "none";
         span.style.borderBottom = "";
+
+        // Copy styles as inline styles to guarantee inheritance
+        if (size) span.style.fontSize = size;
+        if (weight) span.style.fontWeight = weight;
+        if (family) span.style.fontFamily = family;
+        if (color) span.style.color = color;
 
         let ancestor = span.parentNode;
         while (ancestor && ancestor.nodeType === Node.ELEMENT_NODE && ancestor !== container) {
@@ -337,6 +356,15 @@ function injectAndWire(container: HTMLElement): void {
         span.textContent = part;
         span.setAttribute("data-is-placeholder-text", "true");
 
+        // Copy computed parent styles to the new inline span to guarantee font match
+        try {
+          const computed = window.getComputedStyle(parent);
+          if (computed.fontSize) span.style.fontSize = computed.fontSize;
+          if (computed.fontWeight) span.style.fontWeight = computed.fontWeight;
+          if (computed.fontFamily) span.style.fontFamily = computed.fontFamily;
+          if (computed.color) span.style.color = computed.color;
+        } catch (e) {}
+
         // Strip text-decoration and borders from all wrapper ancestors up the tree
         let ancestor = parent;
         while (ancestor && ancestor.nodeType === Node.ELEMENT_NODE && ancestor !== container) {
@@ -401,6 +429,16 @@ function injectAndWire(container: HTMLElement): void {
       span.dataset.fieldId = `f_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
       span.dataset.placeholder = "";
       span.textContent = "\u200B";
+
+      // Copy computed td styles
+      try {
+        const computed = window.getComputedStyle(td);
+        if (computed.fontSize) span.style.fontSize = computed.fontSize;
+        if (computed.fontWeight) span.style.fontWeight = computed.fontWeight;
+        if (computed.fontFamily) span.style.fontFamily = computed.fontFamily;
+        if (computed.color) span.style.color = computed.color;
+      } catch (e) {}
+
       td.appendChild(span);
     }
   });
@@ -643,6 +681,18 @@ function alignSignatures(container: HTMLElement) {
 }
 
 function breakPagesDynamically(container: HTMLElement) {
+  // Find the closest ancestor that has transform style (which is contentRef.current)
+  let scaledAncestor: HTMLElement | null = container;
+  let originalTransform = "";
+  while (scaledAncestor) {
+    if (scaledAncestor.style.transform && scaledAncestor.style.transform.includes("scale")) {
+      originalTransform = scaledAncestor.style.transform;
+      scaledAncestor.style.transform = "none";
+      break;
+    }
+    scaledAncestor = scaledAncestor.parentElement;
+  }
+
   // Remove all previously-split sections first so we re-paginate from scratch
   // (keeps only the first section per original docx page wrapper)
   const allSections = Array.from(
@@ -672,7 +722,9 @@ function breakPagesDynamically(container: HTMLElement) {
       const children = article ? Array.from(article.children) as HTMLElement[] : [];
       const hasContent = children.some(child => !isElementEmpty(child));
 
-      if (!hasContent && originalSections.length > 0) {
+      // Do not remove the section if it is the only remaining section in the entire document
+      const isOnlySectionLeft = (originalSections.length === 0) && (allSections.indexOf(sec) === allSections.length - 1);
+      if (!hasContent && !isOnlySectionLeft) {
         sec.remove();
       } else {
         originalSections.push(sec);
@@ -702,6 +754,11 @@ function breakPagesDynamically(container: HTMLElement) {
   container.querySelectorAll(".legal-editable-field").forEach(field => {
     wireEditableField(field as HTMLElement);
   });
+
+  // Restore original transform scale if we temporarily cleared it
+  if (scaledAncestor && originalTransform) {
+    scaledAncestor.style.transform = originalTransform;
+  }
 }
 
 // A4 page usable height in CSS pixels at 96dpi (≈ 297mm → 1122px) minus top+bottom padding (96px)
@@ -755,7 +812,11 @@ function paginateSection(section: HTMLElement) {
 
   const docxContainer = document.getElementById("docx-print-target") || section.parentElement || section;
   const articleTop = getOffsetTopRelativeToContainer(article, docxContainer);
-  const maxBottom = A4_CONTENT_HEIGHT_PX;
+  // Dynamically calculate the maximum usable height for this section based on its actual padding
+  const computed = window.getComputedStyle(section);
+  const paddingTop = parseFloat(computed.paddingTop) || 0;
+  const paddingBottom = parseFloat(computed.paddingBottom) || 0;
+  const maxBottom = 1123 - paddingTop - paddingBottom;
 
   const children = Array.from(article.children) as HTMLElement[];
   let splitIndex = -1;
@@ -1604,6 +1665,15 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
     const container = docxRef.current;
     if (!container || isLoading) return;
 
+    // Run pagination at staggered intervals to catch late font loading & layout changes
+    const timeouts = [200, 500, 1000, 2000].map(delay =>
+      setTimeout(() => {
+        if (docxRef.current) {
+          breakPagesDynamically(docxRef.current);
+        }
+      }, delay)
+    );
+
     const setupTimer = setTimeout(() => {
       const draggables = container.querySelectorAll<HTMLElement>(
         ".docx-wrapper > section.docx article > p, " +
@@ -1620,7 +1690,10 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       });
     }, 600);
 
-    return () => clearTimeout(setupTimer);
+    return () => {
+      timeouts.forEach(clearTimeout);
+      clearTimeout(setupTimer);
+    };
   }, [isLoading, pageCount]);
 
   /* ─────────────────────────────────────────────────────────────────
@@ -1848,6 +1921,39 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
     applyTransform(x, 0, scale);
   }, [applyTransform]);
 
+function isCaretAtStartOfArticle(range: Range, article: HTMLElement): boolean {
+  if (!range.collapsed) return false;
+  
+  let node = range.startContainer;
+  let offset = range.startOffset;
+  
+  if (node.nodeType === Node.TEXT_NODE) {
+    const textBefore = node.textContent?.substring(0, offset) || "";
+    if (textBefore.trim().replace(/\u200B/g, "").replace(/\uFEFF/g, "").length > 0) {
+      return false;
+    }
+  } else {
+    if (offset > 0) {
+      return false;
+    }
+  }
+  
+  let curr: Node | null = node;
+  while (curr && curr !== article) {
+    let sib = curr.previousSibling;
+    while (sib) {
+      const cleanSib = (sib.textContent || "").replace(/\u200B/g, "").replace(/\uFEFF/g, "").trim();
+      if (cleanSib.length > 0) {
+        return false;
+      }
+      sib = sib.previousSibling;
+    }
+    curr = curr.parentNode;
+  }
+  
+  return true;
+}
+
   useEffect(() => {
     if (!docxRef.current) return;
 
@@ -1905,18 +2011,64 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
               f.classList.add("is-empty");
               f.classList.remove("has-value");
               
+              // Check if cursor was inside this field
+              const sel = window.getSelection();
+              const isSelectionInField = sel && sel.rangeCount > 0 && (
+                f.contains(sel.anchorNode) || f.contains(sel.focusNode)
+              );
+
               // Ensure anchor and placeholder layer exist natively in the DOM, split for center alignment
               const placeholder = f.dataset.placeholder || "";
               const splitIndex = Math.max(1, Math.floor(placeholder.length * 0.5));
               const left = placeholder.substring(0, splitIndex);
               const right = placeholder.substring(splitIndex);
               f.innerHTML = `<span class="placeholder-layer placeholder-layer-left" contenteditable="false">${left}</span>\u200B<span class="placeholder-layer placeholder-layer-right" contenteditable="false">${right}</span>`;
+
+              // Restore cursor synchronously at the zero-width space in the center
+              if (isSelectionInField && sel) {
+                const textNode = Array.from(f.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
+                if (textNode) {
+                  const range = document.createRange();
+                  range.setStart(textNode, 1);
+                  range.collapse(true);
+                  sel.removeAllRanges();
+                  sel.addRange(range);
+                }
+              }
             }
           } else {
             if (f.getAttribute("data-is-placeholder-text") === "true" || f.classList.contains("is-empty")) {
               f.removeAttribute("data-is-placeholder-text");
               f.classList.remove("is-empty");
               f.classList.add("has-value");
+
+              // Check if cursor was inside this field
+              const sel = window.getSelection();
+              const isSelectionInField = sel && sel.rangeCount > 0 && (
+                f.contains(sel.anchorNode) || f.contains(sel.focusNode)
+              );
+              
+              // Extract the raw text input cleanly
+              const clone = f.cloneNode(true) as HTMLElement;
+              clone.querySelectorAll(".placeholder-layer").forEach(layer => layer.remove());
+              const rawText = clone.textContent?.replace(/\u200B/g, "").replace(/\uFEFF/g, "") || "";
+              
+              let cursorOffset = rawText.length;
+
+              // Overwrite with pure clean text content to allow normal bold/light styles to render natively
+              f.textContent = rawText;
+
+              // Restore cursor focus at the end of the new text
+              if (isSelectionInField && sel) {
+                const range = document.createRange();
+                const textNode = f.firstChild;
+                if (textNode) {
+                  range.setStart(textNode, Math.min(cursorOffset, textNode.textContent?.length || 0));
+                  range.collapse(true);
+                  sel.removeAllRanges();
+                  sel.addRange(range);
+                }
+              }
             }
           }
         });
@@ -1999,6 +2151,68 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
       }
     };
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Backspace") return;
+      const target = e.target as HTMLElement;
+      const article = target.closest("article");
+      if (!article) return;
+
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        
+        if (isCaretAtStartOfArticle(range, article)) {
+          // Find all articles in the container
+          const allArticles = Array.from(container.querySelectorAll("article")) as HTMLElement[];
+          const currIdx = allArticles.indexOf(article);
+          if (currIdx > 0) {
+            const prevArticle = allArticles[currIdx - 1];
+            e.preventDefault();
+
+            // Find or create a range at the end of the previous article to move selection to
+            const mergeRange = document.createRange();
+            const lastChildOfPrev = prevArticle.lastElementChild;
+            
+            if (lastChildOfPrev) {
+              mergeRange.selectNodeContents(lastChildOfPrev);
+              mergeRange.collapse(false); // caret at the end of last paragraph
+            } else {
+              mergeRange.selectNodeContents(prevArticle);
+              mergeRange.collapse(false); // caret at the end of article
+            }
+
+            // Move the cursor to the end of the previous article first
+            sel.removeAllRanges();
+            sel.addRange(mergeRange);
+
+            // Merge the current article's paragraphs / children to the end of the previous article
+            const firstChild = article.firstElementChild;
+            if (firstChild && lastChildOfPrev && firstChild.tagName === "P" && lastChildOfPrev.tagName === "P") {
+              // Merge the first paragraph text directly into the last paragraph of the previous article
+              while (firstChild.firstChild) {
+                lastChildOfPrev.appendChild(firstChild.firstChild);
+              }
+              firstChild.remove();
+            }
+
+            // Append all remaining children of the current article
+            while (article.firstChild) {
+              prevArticle.appendChild(article.firstChild);
+            }
+
+            // Remove the current section since it is now empty (if it's a split section)
+            const currentSection = article.closest(".docx") as HTMLElement;
+            if (currentSection && currentSection.dataset.split === "1") {
+              currentSection.remove();
+            }
+
+            // Re-paginate everything to re-balance the layout!
+            schedulePagination(container);
+          }
+        }
+      }
+    };
+
     const handleMouseDown = (e: MouseEvent) => {
       return;
     };
@@ -2017,6 +2231,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
     };
 
     container.addEventListener("input", handleInput);
+    container.addEventListener("keydown", handleKeyDown);
     container.addEventListener("click", handleClick);
     container.addEventListener("mousedown", handleMouseDown);
     container.addEventListener("touchstart", handleTouchStart, { passive: true });
@@ -2025,6 +2240,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
 
     const cleanup = () => {
       container.removeEventListener("input", handleInput);
+      container.removeEventListener("keydown", handleKeyDown);
       container.removeEventListener("click", handleClick);
       container.removeEventListener("mousedown", handleMouseDown);
       container.removeEventListener("touchstart", handleTouchStart);
@@ -2138,7 +2354,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
           ignoreFonts: false, breakPages: true, useBase64URL: true,
           renderHeaders: false, renderFooters: false,
           experimental: true,
-          ignoreLastRenderedPageBreak: false,
+          ignoreLastRenderedPageBreak: true,
           className: "docx",
         })
       .then(() => {
@@ -2236,7 +2452,7 @@ export function Editor({ formId, initialContent, draftId, customFile, customFile
           ignoreFonts: false, breakPages: true, useBase64URL: true,
           renderHeaders: false, renderFooters: false,
           experimental: true,
-          ignoreLastRenderedPageBreak: false,
+          ignoreLastRenderedPageBreak: true,
           className: "docx",
         }))
       .then(() => {

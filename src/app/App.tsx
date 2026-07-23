@@ -95,6 +95,7 @@ export default function App() {
   // Custom file states
   const [customFile, setCustomFile] = useState<File | undefined>(undefined);
   const [customFileName, setCustomFileName] = useState<string>("");
+  const [courtNavPath, setCourtNavPath] = useState<string[]>([]);
 
   useEffect(() => {
     CapSplashScreen.hide().catch(() => {});
@@ -151,7 +152,11 @@ export default function App() {
           CapacitorApp.exitApp();
           break;
         case "court":
-          goToDashboard();
+          if (courtNavPath.length > 0) {
+            setCourtNavPath(prev => prev.slice(0, -1));
+          } else {
+            goToDashboard();
+          }
           break;
         case "editor": {
           const wasCustom = !!customFile;
@@ -195,7 +200,7 @@ export default function App() {
     return () => {
       listener.remove();
     };
-  }, [currentScreen, customFile, activeDraftId, selectedCourt, showPayment]);
+  }, [currentScreen, customFile, activeDraftId, selectedCourt, showPayment, courtNavPath]);
 
   // ── Splash complete: navigate appropriately ──────────────────────
   const handleSplashComplete = () => {
@@ -239,6 +244,7 @@ export default function App() {
 
   const handleCourtSelect = (courtId: string) => {
     setSelectedCourt(courtId);
+    setCourtNavPath([]); // Reset navigation path when selecting a court
     setCurrentScreen("court");
     saveNavState("court", courtId, "");
   };
@@ -369,6 +375,8 @@ export default function App() {
           courtId={selectedCourt}
           onBack={goToDashboard}
           onSelectForm={handleFormSelect}
+          navPath={courtNavPath}
+          setNavPath={setCourtNavPath}
         />
       )}
 

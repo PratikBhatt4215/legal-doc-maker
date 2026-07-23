@@ -76,8 +76,13 @@ export function SubscriptionScreen({ onBack, onSuccess }: SubscriptionScreenProp
   }, [subStatus]);
 
   const URI_SCHEMES: Record<string, string> = {
-    "PhonePe": "phonepe://pay",
-    "Paytm": "paytmmp://pay"
+    "PhonePe": "upi://pay",
+    "Paytm": "upi://pay"
+  };
+
+  const PACKAGES: Record<string, string> = {
+    "PhonePe": "com.phonepe.app",
+    "Paytm": "net.one97.paytm"
   };
 
   const handleSubscribe = async (label: "PhonePe" | "Paytm") => {
@@ -85,7 +90,7 @@ export function SubscriptionScreen({ onBack, onSuccess }: SubscriptionScreenProp
     setSelectedMethod(label);
 
     const trackingTxnId = `TXN-${Math.random().toString(36).substring(2, 11).toUpperCase()}`;
-    const YOUR_UPI_ID = "8766372355@axl"; 
+    const YOUR_UPI_ID = "7004458803-2@ybl"; 
     const appName = "Legal Doc Maker";
     const description = "Premium 1-Month Subscription";
     const amount = "350.00"; 
@@ -96,6 +101,8 @@ export function SubscriptionScreen({ onBack, onSuccess }: SubscriptionScreenProp
       am: amount,
       cu: "INR",
       tn: `${description} - ${trackingTxnId} - ${label}`,
+      mc: "0000",
+      package: PACKAGES[label]
     });
 
     const deepLinkUrl = `${URI_SCHEMES[label]}?${upiParams.toString()}`;
